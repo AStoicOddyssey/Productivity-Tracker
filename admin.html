@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin — Productivity Tracker</title>
+<link rel="stylesheet" href="/app.css" />
+<style>
+  .admin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  .user-row-actions { display: flex; gap: 6px; }
+  .rate-cell input { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 4px 8px; font-size: 12px; font-family: var(--font); width: 90px; outline: none; }
+  .rate-cell input:focus { border-color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Admin</div>
+        <div class="topbar-sub">User management</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-primary" onclick="openModal('modal-invite')">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Invite user
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="panel">
+        <div class="panel-header">
+          <span class="panel-title">Users</span>
+        </div>
+        <table class="data-table" id="users-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Rate (R/hr)</th>
+              <th>Joined</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody">
+            <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-backdrop" id="modal-invite" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Invite user</div>
+    <div class="form-field">
+      <label class="form-label">Email *</label>
+      <input class="form-input" id="invite-email" placeholder="user@example.com" type="email" />
+    </div>
+    <div class="form-field">
+      <label class="form-label">Full name</label>
+      <input class="form-input" id="invite-name" placeholder="Jane Smith" />
+    </div>
+    <div class="form-field">
+      <label class="form-label">Hourly rate (R/hr)</label>
+      <input class="form-input" id="invite-rate" type="number" value="133.33" step="0.01" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-invite')">Cancel</button>
+      <button class="btn-primary" onclick="inviteUser()">Send invite</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+let users = [];
+let me = null;
+let branches = [];
+
+async function init() {
+  me = await requireLogin();
+  if (!me) return;
+  if (!me.is_admin) { window.location.href = '/dashboard'; return; }
+  branches = await GET('branches').catch(() => []);
+  buildSidebar('admin', me, branches);
+  await loadUsers();
+}
+
+async function loadUsers() {
+  try {
+    users = await GET('admin');
+    renderUsers();
+  } catch(e) { toast('Failed to load users', 'error'); }
+}
+
+function renderUsers() {
+  const tbody = document.getElementById('users-tbody');
+  if (!users.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--text-3);">No users yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => {
+    const joined = new Date(u.created_at).toLocaleDateString('en-ZA', { day:'numeric', month:'short', year:'numeric' });
+    return `<tr>
+      <td>${escHtml(u.full_name || '—')}</td>
+      <td class="text-muted">${escHtml(u.email)}</td>
+      <td><span class="badge ${u.is_admin ? 'badge-billable' : 'badge-nonbillable'}">${u.is_admin ? 'Admin' : 'Member'}</span></td>
+      <td class="rate-cell">
+        <input type="number" value="${u.hourly_rate}" step="0.01"
+          onblur="updateRate('${u.id}', this.value)"
+          onkeydown="if(event.key==='Enter')this.blur()" />
+      </td>
+      <td class="text-muted">${joined}</td>
+      <td>
+        <div class="user-row-actions">
+          ${!u.is_admin ? `<button class="btn-ghost" style="font-size:12px;padding:3px 8px;" onclick="toggleAdmin('${u.id}', true)">Make admin</button>` : ''}
+          ${u.id !== me.id ? `<button class="btn-danger" style="font-size:12px;padding:3px 8px;" onclick="toggleAdmin('${u.id}', false)">Remove admin</button>` : ''}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function inviteUser() {
+  const email = document.getElementById('invite-email').value.trim();
+  const name  = document.getElementById('invite-name').value.trim();
+  const rate  = parseFloat(document.getElementById('invite-rate').value) || 133.33;
+  if (!email) { toast('Email required', 'error'); return; }
+  try {
+    await POST('admin', { email, full_name: name, hourly_rate: rate });
+    closeModal('modal-invite');
+    toast('Invite sent', 'success');
+    await loadUsers();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function updateRate(id, rate) {
+  try {
+    await PATCH('admin', { id, hourly_rate: parseFloat(rate) });
+    toast('Rate updated', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function toggleAdmin(id, is_admin) {
+  if (!confirm(is_admin ? 'Make this user an admin?' : 'Remove admin access?')) return;
+  try {
+    await PATCH('admin', { id, is_admin });
+    await loadUsers();
+    toast('Updated', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>
