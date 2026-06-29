@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scratchpad — Productivity Tracker</title>
+<link rel="stylesheet" href="/app.css" />
+<style>
+  .scratchpad-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; height: calc(100vh - 100px); }
+  .note-list { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .note-list-header { padding: 12px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+  .note-list-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .note-items { overflow-y: auto; flex: 1; }
+  .note-item { padding: 10px 14px; border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+  .note-item:hover { background: var(--surface-2); }
+  .note-item.active { background: var(--accent-dim); }
+  .note-item-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .note-item-meta { font-size: 11px; color: var(--text-3); display: flex; gap: 6px; align-items: center; }
+  .note-branch-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+
+  .note-editor { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; display: flex; flex-direction: column; }
+  .note-editor-top { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .note-title-input { background: none; border: none; font-size: 15px; font-weight: 600; color: var(--text); font-family: var(--font); outline: none; flex: 1; min-width: 0; }
+  .note-title-input::placeholder { color: var(--text-3); }
+
+  .rich-toolbar { padding: 6px 14px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 4px; background: var(--surface-2); flex-shrink: 0; flex-wrap: wrap; }
+  .rich-btn { background: none; border: none; color: var(--text-2); font-family: var(--font); font-size: 12px; font-weight: 500; padding: 3px 7px; border-radius: 4px; cursor: pointer; transition: background 0.1s, color 0.1s; }
+  .rich-btn:hover { background: var(--surface-3); color: var(--text); }
+  .rich-sep { width: 1px; height: 16px; background: var(--border); margin: 0 2px; }
+
+  .note-body {
+    flex: 1; padding: 20px 24px; overflow-y: auto; outline: none;
+    font-size: 14px; line-height: 1.8; color: var(--text);
+    caret-color: var(--accent);
+  }
+  .note-body:empty::before { content: 'Start writing…'; color: var(--text-3); pointer-events: none; }
+  .note-body h1 { font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--text); }
+  .note-body h2 { font-size: 16px; font-weight: 600; margin-bottom: 8px; color: var(--text); }
+  .note-body ul, .note-body ol { padding-left: 20px; margin-bottom: 8px; }
+  .note-body li { margin-bottom: 4px; }
+  .note-body strong { color: var(--text); }
+  .note-body a { color: var(--accent); }
+
+  .note-footer { padding: 8px 14px; border-top: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-3); flex-shrink: 0; }
+  .empty-editor { display: flex; align-items: center; justify-content: center; flex: 1; color: var(--text-3); font-size: 13px; flex-direction: column; gap: 12px; }
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Scratchpad</div>
+        <div class="topbar-sub">Your notes</div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-primary" onclick="newNote()">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New note
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="scratchpad-layout">
+        <!-- NOTE LIST -->
+        <div class="note-list">
+          <div class="note-list-header">
+            <span class="note-list-title">Notes</span>
+          </div>
+          <div class="note-items" id="note-items">
+            <div style="padding:16px;color:var(--text-3);font-size:13px;">No notes yet.</div>
+          </div>
+        </div>
+
+        <!-- EDITOR -->
+        <div class="note-editor" id="note-editor">
+          <div class="empty-editor" id="empty-editor">
+            <svg viewBox="0 0 24 24" style="width:32px;height:32px;stroke:var(--text-3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Select a note or create a new one
+          </div>
+          <div id="editor-content" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+            <div class="note-editor-top">
+              <input class="note-title-input" id="note-title" placeholder="Note title…" oninput="scheduleSave()" />
+              <select class="form-select" id="note-branch" style="width:160px;" onchange="scheduleSave()">
+                <option value="">Miscellaneous</option>
+              </select>
+              <button class="btn-danger" style="padding:4px 10px;font-size:12px;" onclick="deleteNote()">Delete</button>
+            </div>
+            <div class="rich-toolbar">
+              <button class="rich-btn" onclick="fmt('bold')"><b>B</b></button>
+              <button class="rich-btn" onclick="fmt('italic')"><i>I</i></button>
+              <button class="rich-btn" onclick="fmt('underline')"><u>U</u></button>
+              <div class="rich-sep"></div>
+              <button class="rich-btn" onclick="fmtBlock('h1')">H1</button>
+              <button class="rich-btn" onclick="fmtBlock('h2')">H2</button>
+              <div class="rich-sep"></div>
+              <button class="rich-btn" onclick="fmt('insertUnorderedList')">• List</button>
+              <button class="rich-btn" onclick="fmt('insertOrderedList')">1. List</button>
+            </div>
+            <div class="note-body" id="note-body" contenteditable="true" oninput="scheduleSave()"></div>
+            <div class="note-footer">
+              <span id="note-save-status">All changes saved</span>
+              <span id="note-updated"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- BRANCH MODAL -->
+<div class="modal-backdrop" id="modal-branch" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">New branch</div>
+    <div class="form-field">
+      <label class="form-label">Branch name *</label>
+      <input class="form-input" id="branch-name" placeholder="e.g. Aloware" />
+    </div>
+    <div class="form-field">
+      <label class="form-label">Colour</label>
+      <div class="colour-picker" id="colour-picker"></div>
+      <input type="hidden" id="branch-colour" value="#58a6ff" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-branch')">Cancel</button>
+      <button class="btn-primary" onclick="saveBranch()">Create</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+let notes = [];
+let branches = [];
+let me = null;
+let currentNoteId = null;
+let saveTimer = null;
+
+async function init() {
+  me = await requireLogin();
+  if (!me) return;
+  branches = await GET('branches').catch(() => []);
+  buildSidebar('scratchpad', me, branches);
+  buildColourPicker();
+  populateBranchSelect();
+  notes = await GET('notes').catch(() => []);
+  renderNoteList();
+}
+
+function populateBranchSelect() {
+  const sel = document.getElementById('note-branch');
+  sel.innerHTML = '<option value="">Miscellaneous</option>';
+  branches.forEach(b => {
+    const o = document.createElement('option');
+    o.value = b.id; o.textContent = b.name; sel.appendChild(o);
+  });
+}
+
+function buildColourPicker() {
+  const picker = document.getElementById('colour-picker');
+  if (!picker) return;
+  picker.innerHTML = '';
+  PALETTE.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'colour-swatch' + (c === '#58a6ff' ? ' active' : '');
+    sw.style.background = c;
+    sw.onclick = () => {
+      document.querySelectorAll('.colour-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      document.getElementById('branch-colour').value = c;
+    };
+    picker.appendChild(sw);
+  });
+}
+
+function renderNoteList() {
+  const container = document.getElementById('note-items');
+  if (!notes.length) {
+    container.innerHTML = '<div style="padding:16px;color:var(--text-3);font-size:13px;">No notes yet.</div>';
+    return;
+  }
+  container.innerHTML = notes.map(n => {
+    const b = n.branches;
+    const dot = b ? `<span class="note-branch-dot" style="background:${b.colour};"></span>` : `<span class="note-branch-dot" style="background:var(--text-3);"></span>`;
+    const bname = b?.name || 'Misc';
+    const date = new Date(n.updated_at).toLocaleDateString('en-ZA', { day:'numeric', month:'short' });
+    return `
+      <div class="note-item ${n.id === currentNoteId ? 'active' : ''}" onclick="openNote('${n.id}')">
+        <div class="note-item-title">${escHtml(n.title)}</div>
+        <div class="note-item-meta">${dot}${escHtml(bname)} · ${date}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+async function openNote(id) {
+  currentNoteId = id;
+  renderNoteList();
+  const note = await GET('notes', { id }).catch(() => null);
+  if (!note) return;
+
+  document.getElementById('empty-editor').style.display = 'none';
+  document.getElementById('editor-content').style.display = 'flex';
+
+  document.getElementById('note-title').value = note.title;
+  document.getElementById('note-branch').value = note.branch_id || '';
+  document.getElementById('note-body').innerHTML = note.body || '';
+  document.getElementById('note-updated').textContent =
+    'Updated ' + new Date(note.updated_at).toLocaleDateString('en-ZA', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('note-save-status').textContent = 'All changes saved';
+}
+
+async function newNote() {
+  try {
+    const n = await POST('notes', { title: 'Untitled note', body: '', branch_id: null });
+    notes.unshift(n);
+    renderNoteList();
+    openNote(n.id);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function scheduleSave() {
+  document.getElementById('note-save-status').textContent = 'Saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveCurrentNote, 1000);
+}
+
+async function saveCurrentNote() {
+  if (!currentNoteId) return;
+  const title     = document.getElementById('note-title').value.trim() || 'Untitled note';
+  const body      = document.getElementById('note-body').innerHTML;
+  const branch_id = document.getElementById('note-branch').value || null;
+  try {
+    const updated = await PATCH('notes', { id: currentNoteId, title, body, branch_id });
+    notes = notes.map(n => n.id === currentNoteId ? { ...n, ...updated } : n);
+    renderNoteList();
+    document.getElementById('note-save-status').textContent = 'All changes saved';
+  } catch(e) {
+    document.getElementById('note-save-status').textContent = 'Save failed';
+  }
+}
+
+async function deleteNote() {
+  if (!currentNoteId || !confirm('Delete this note?')) return;
+  try {
+    await DELETE('notes', { id: currentNoteId });
+    notes = notes.filter(n => n.id !== currentNoteId);
+    currentNoteId = null;
+    document.getElementById('empty-editor').style.display = 'flex';
+    document.getElementById('editor-content').style.display = 'none';
+    renderNoteList();
+    toast('Note deleted', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function fmt(cmd) { document.execCommand(cmd, false, null); document.getElementById('note-body').focus(); scheduleSave(); }
+function fmtBlock(tag) { document.execCommand('formatBlock', false, tag); document.getElementById('note-body').focus(); scheduleSave(); }
+
+async function saveBranch() {
+  const name   = document.getElementById('branch-name').value.trim();
+  const colour = document.getElementById('branch-colour').value;
+  if (!name) { toast('Branch name required', 'error'); return; }
+  try {
+    const b = await POST('branches', { name, colour });
+    branches.push(b);
+    populateBranchSelect();
+    buildSidebar('scratchpad', me, branches);
+    closeModal('modal-branch');
+    toast('Branch created', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>
