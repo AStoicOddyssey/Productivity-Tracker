@@ -2,6 +2,7 @@
   "name": "productivity-tracker",
   "version": "1.0.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "cookie": "^0.6.0",
