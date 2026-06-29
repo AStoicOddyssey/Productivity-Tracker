@@ -1,19 +1,11 @@
 {
-  "builds": [
-    { "src": "public/**", "use": "@vercel/static" },
-    { "src": "api/**/*.js", "use": "@vercel/node" }
-  ],
-  "routes": [
-    { "src": "/api/(.*)", "dest": "/api/$1" },
-    { "src": "/app.css", "dest": "/public/app.css" },
-    { "src": "/app.js", "dest": "/public/app.js" },
-    { "src": "/sidebar.js", "dest": "/public/sidebar.js" },
-    { "src": "/dashboard", "dest": "/public/dashboard.html" },
-    { "src": "/calendar", "dest": "/public/calendar.html" },
-    { "src": "/tasks", "dest": "/public/tasks.html" },
-    { "src": "/scratchpad", "dest": "/public/scratchpad.html" },
-    { "src": "/reports", "dest": "/public/reports.html" },
-    { "src": "/admin", "dest": "/public/admin.html" },
-    { "src": "/(.*)", "dest": "/public/index.html" }
+  "rewrites": [
+    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/dashboard", "destination": "/public/dashboard.html" },
+    { "source": "/calendar", "destination": "/public/calendar.html" },
+    { "source": "/tasks", "destination": "/public/tasks.html" },
+    { "source": "/scratchpad", "destination": "/public/scratchpad.html" },
+    { "source": "/reports", "destination": "/public/reports.html" },
+    { "source": "/admin", "destination": "/public/admin.html" }
   ]
 }
