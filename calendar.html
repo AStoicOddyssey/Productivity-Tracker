@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Timesheet — Productivity Tracker</title>
+<link rel="stylesheet" href="/app.css" />
+<style>
+  .cal-toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; gap: 12px;
+  }
+  .view-tabs {
+    display: flex; background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 3px; gap: 2px;
+  }
+  .view-tab {
+    padding: 4px 14px; border-radius: 4px; font-size: 12px; font-weight: 500;
+    cursor: pointer; color: var(--text-2); border: none; background: none;
+    font-family: var(--font); transition: background 0.1s, color 0.1s;
+  }
+  .view-tab.active { background: var(--surface-3); color: var(--text); }
+  .cal-nav { display: flex; align-items: center; gap: 8px; }
+  .cal-nav-btn {
+    background: none; border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text-2); width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center; cursor: pointer;
+  }
+  .cal-nav-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .cal-nav-btn:hover { border-color: var(--border-2); color: var(--text); }
+  .cal-date-label { font-size: 14px; font-weight: 600; color: var(--text); min-width: 200px; text-align: center; }
+
+  /* GRID */
+  .cal-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .cal-header-row { display: grid; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .cal-header-time { padding: 8px; border-right: 1px solid var(--border); font-size: 11px; color: var(--text-3); min-width: 56px; }
+  .cal-header-day { padding: 8px 12px; font-size: 12px; font-weight: 600; color: var(--text-2); text-align: center; }
+  .cal-header-day.today { color: var(--accent); }
+
+  .cal-body { overflow-y: auto; }
+  .cal-row { display: grid; border-bottom: 1px solid var(--border); min-height: 34px; }
+  .cal-row:last-child { border-bottom: none; }
+  .cal-time {
+    padding: 6px 8px; font-size: 11px; color: var(--text-3);
+    border-right: 1px solid var(--border);
+    display: flex; align-items: flex-start; white-space: nowrap;
+    background: var(--surface-2); min-width: 56px;
+  }
+  .cal-cell {
+    padding: 2px 4px; min-height: 34px; cursor: pointer;
+    position: relative; transition: background 0.1s;
+    border-right: 1px solid var(--border); user-select: none;
+  }
+  .cal-cell:last-child { border-right: none; }
+  .cal-cell:hover { background: var(--surface-2); }
+  .cal-cell.selecting { background: var(--accent-dim); }
+  .cal-entry {
+    border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 500;
+    display: flex; align-items: center; justify-content: space-between;
+    height: 28px; overflow: hidden; cursor: pointer; gap: 4px;
+  }
+  .cal-entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .cal-entry-time { font-size: 10px; opacity: 0.75; white-space: nowrap; }
+  .cal-entry-del {
+    opacity: 0; background: none; border: none; cursor: pointer;
+    color: inherit; font-size: 14px; line-height: 1; padding: 0 2px;
+    flex-shrink: 0;
+  }
+  .cal-entry:hover .cal-entry-del { opacity: 0.7; }
+  .cal-entry-del:hover { opacity: 1 !important; }
+
+  /* HOUR RANGE CONTROLS */
+  .hour-controls { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+  .hour-btn {
+    background: none; border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text-2); padding: 3px 10px; font-size: 12px;
+    font-family: var(--font); cursor: pointer;
+  }
+  .hour-btn:hover { border-color: var(--border-2); color: var(--text); }
+
+  /* MISC */
+  .misc-section { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .misc-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-2); display: flex; align-items: center; justify-content: space-between; }
+  .misc-item { padding: 8px 14px; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .misc-item:last-child { border-bottom: none; }
+  .misc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+  .misc-del { margin-left: auto; background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 16px; line-height: 1; }
+  .misc-del:hover { color: var(--danger); }
+  .misc-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  .misc-input { flex: 1; }
+
+  /* MODAL SLOT ASSIGNMENT */
+  .slot-info { font-size: 12px; color: var(--text-3); margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Timesheet</div>
+        <div class="topbar-sub" id="topbar-sub"></div>
+      </div>
+      <div class="topbar-actions">
+        <div class="hour-controls">
+          <span>Hours:</span>
+          <button class="hour-btn" onclick="expandHours(-1)">− Earlier</button>
+          <span id="hour-range-label">10:00 – 18:00</span>
+          <button class="hour-btn" onclick="expandHours(1)">Later +</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="cal-toolbar">
+        <div class="view-tabs">
+          <button class="view-tab active" onclick="setView('day',this)">Day</button>
+          <button class="view-tab" onclick="setView('week',this)">Week</button>
+          <button class="view-tab" onclick="setView('month',this)">Month</button>
+        </div>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="navigate(-1)">
+            <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <span class="cal-date-label" id="cal-label"></span>
+          <button class="cal-nav-btn" onclick="navigate(1)">
+            <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+        </div>
+        <button class="btn-ghost" onclick="goToday()">Today</button>
+      </div>
+
+      <div class="cal-wrap">
+        <div class="cal-header-row" id="cal-header"></div>
+        <div class="cal-body" id="cal-body" style="max-height:520px;"></div>
+      </div>
+
+      <div class="misc-section" id="misc-section">
+        <div class="misc-header">
+          <span>Miscellaneous</span>
+        </div>
+        <div id="misc-list"></div>
+        <div class="misc-input-row">
+          <input class="form-input misc-input" id="misc-input" placeholder="Add a miscellaneous item…" />
+          <button class="btn-primary" onclick="addMisc()">Add</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SLOT ASSIGNMENT MODAL -->
+<div class="modal-backdrop" id="modal-slot" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Assign task to slot</div>
+    <div class="slot-info" id="slot-info"></div>
+    <div class="form-field">
+      <label class="form-label">Task</label>
+      <select class="form-select" id="slot-task-select">
+        <option value="">— Select a task —</option>
+      </select>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Note (optional)</label>
+      <input class="form-input" id="slot-note" placeholder="Quick note for this slot…" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-slot')">Cancel</button>
+      <button class="btn-primary" onclick="assignSlot()">Assign</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+let currentView = 'day';
+let currentDate = new Date();
+let startHour = 10;
+let endHour = 18;
+let tasks = [];
+let timeLogs = {};   // key: "date|slot_start" → log object
+let miscItems = [];
+let selecting = false;
+let selectStart = null;
+let selectedSlots = [];
+let me = null;
+let branches = [];
+
+async function init() {
+  me = await requireLogin();
+  if (!me) return;
+
+  branches = await GET('branches').catch(() => []);
+  buildSidebar('calendar', me, branches);
+
+  tasks = await GET('tasks').catch(() => []);
+  await loadData();
+  render();
+}
+
+function getDateRange() {
+  if (currentView === 'day') {
+    const d = currentDate.toISOString().slice(0,10);
+    return { from: d, to: d };
+  }
+  if (currentView === 'week') {
+    const day = currentDate.getDay();
+    const mon = new Date(currentDate);
+    mon.setDate(currentDate.getDate() - (day === 0 ? 6 : day - 1));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { from: mon.toISOString().slice(0,10), to: sun.toISOString().slice(0,10) };
+  }
+  // month
+  const y = currentDate.getFullYear(), m = currentDate.getMonth();
+  const from = new Date(y, m, 1).toISOString().slice(0,10);
+  const to   = new Date(y, m+1, 0).toISOString().slice(0,10);
+  return { from, to };
+}
+
+function getDaysInRange() {
+  const { from, to } = getDateRange();
+  const days = [];
+  let d = new Date(from);
+  const end = new Date(to);
+  while (d <= end) { days.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  return days;
+}
+
+async function loadData() {
+  const { from, to } = getDateRange();
+  const logs = await GET('time-logs', { from, to }).catch(() => []);
+  timeLogs = {};
+  for (const log of logs) timeLogs[log.log_date + '|' + log.slot_start] = log;
+
+  if (currentView === 'day') {
+    const d = currentDate.toISOString().slice(0,10);
+    miscItems = await GET('time-logs', { type: 'misc', date: d }).catch(() => []);
+    renderMisc();
+  }
+}
+
+function render() {
+  updateLabel();
+  renderHeader();
+  renderBody();
+}
+
+function updateLabel() {
+  const opts = { year:'numeric', month:'long', day:'numeric' };
+  const wOpts = { year:'numeric', month:'short', day:'numeric' };
+  if (currentView === 'day') {
+    document.getElementById('cal-label').textContent = currentDate.toLocaleDateString('en-ZA', opts);
+    document.getElementById('topbar-sub').textContent = 'Day view';
+  } else if (currentView === 'week') {
+    const { from, to } = getDateRange();
+    document.getElementById('cal-label').textContent =
+      new Date(from).toLocaleDateString('en-ZA', wOpts) + ' – ' + new Date(to).toLocaleDateString('en-ZA', wOpts);
+    document.getElementById('topbar-sub').textContent = 'Week view';
+  } else {
+    document.getElementById('cal-label').textContent =
+      currentDate.toLocaleDateString('en-ZA', { year:'numeric', month:'long' });
+    document.getElementById('topbar-sub').textContent = 'Month view';
+  }
+  document.getElementById('hour-range-label').textContent =
+    String(startHour).padStart(2,'0') + ':00 – ' + String(endHour).padStart(2,'0') + ':00';
+}
+
+function renderHeader() {
+  const days = getDaysInRange();
+  const todayStr = today();
+  const header = document.getElementById('cal-header');
+  const cols = 1 + days.length;
+  header.style.gridTemplateColumns = '56px ' + days.map(() => '1fr').join(' ');
+
+  let html = '<div class="cal-header-time"></div>';
+  for (const d of days) {
+    const dt = new Date(d);
+    const label = currentView === 'day'
+      ? dt.toLocaleDateString('en-ZA', { weekday:'long', day:'numeric', month:'long' })
+      : dt.toLocaleDateString('en-ZA', { weekday:'short', day:'numeric' });
+    html += `<div class="cal-header-day ${d === todayStr ? 'today' : ''}">${label}</div>`;
+  }
+  header.innerHTML = html;
+}
+
+function renderBody() {
+  const days = getDaysInRange();
+  const slots = generateSlots(startHour, endHour);
+  const body = document.getElementById('cal-body');
+  const todayStr = today();
+
+  let html = '';
+  for (const slot of slots) {
+    const slotE = slotEnd(slot);
+    const isHour = slot.endsWith(':00');
+    html += `<div class="cal-row" style="grid-template-columns:56px ${days.map(()=>'1fr').join(' ')};">`;
+    html += `<div class="cal-time">${isHour ? slot : ''}</div>`;
+    for (const d of days) {
+      const key = d + '|' + slot;
+      const log = timeLogs[key];
+      html += `<div class="cal-cell" data-date="${d}" data-slot="${slot}"
+        onmousedown="startSelect(event,'${d}','${slot}')"
+        onmouseenter="extendSelect(event,'${d}','${slot}')"
+        onmouseup="endSelect(event)">`;
+      if (log) {
+        const t = log.tasks;
+        const colour = t?.branches?.colour || '#58a6ff';
+        const bg = colourBg(colour, 0.18);
+        html += `<div class="cal-entry" style="background:${bg};color:${colour};"
+          onclick="event.stopPropagation()">
+          <span class="cal-entry-name">${escHtml(t?.title || '—')}</span>
+          <span class="cal-entry-time">${slot}–${slotE}</span>
+          <button class="cal-entry-del" onclick="deleteSlot('${d}','${slot}')">×</button>
+        </div>`;
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+  body.innerHTML = html;
+}
+
+function renderMisc() {
+  const list = document.getElementById('misc-list');
+  if (!miscItems.length) {
+    list.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-3);">No miscellaneous items today.</div>';
+    return;
+  }
+  list.innerHTML = miscItems.map(m => `
+    <div class="misc-item">
+      <span class="misc-dot"></span>
+      <span>${escHtml(m.description)}</span>
+      <button class="misc-del" onclick="deleteMisc('${m.id}')">×</button>
+    </div>
+  `).join('');
+}
+
+// ── SELECTION ─────────────────────────────────────────────────
+function startSelect(e, date, slot) {
+  if (e.button !== 0) return;
+  selecting = true;
+  selectStart = { date, slot };
+  selectedSlots = [{ date, slot }];
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting'));
+  e.currentTarget.classList.add('selecting');
+}
+
+function extendSelect(e, date, slot) {
+  if (!selecting || date !== selectStart.date) return;
+  const slots = generateSlots(startHour, endHour);
+  const i1 = slots.indexOf(selectStart.slot);
+  const i2 = slots.indexOf(slot);
+  const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
+  selectedSlots = slots.slice(lo, hi+1).map(s => ({ date, slot: s }));
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting'));
+  selectedSlots.forEach(s => {
+    const cell = document.querySelector(`.cal-cell[data-date="${s.date}"][data-slot="${s.slot}"]`);
+    if (cell) cell.classList.add('selecting');
+  });
+}
+
+function endSelect(e) {
+  if (!selecting) return;
+  selecting = false;
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting'));
+  if (selectedSlots.length) openSlotModal();
+}
+
+document.addEventListener('mouseup', () => { if (selecting) { selecting = false; document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting')); } });
+
+// ── SLOT MODAL ────────────────────────────────────────────────
+function openSlotModal() {
+  const sel = document.getElementById('slot-task-select');
+  sel.innerHTML = '<option value="">— Select a task —</option>';
+
+  // Group by branch
+  const byBranch = {};
+  for (const t of tasks) {
+    if (t.status === 'completed') continue;
+    const bn = t.branches?.name || 'Unassigned';
+    if (!byBranch[bn]) byBranch[bn] = [];
+    byBranch[bn].push(t);
+  }
+
+  for (const [bn, ts] of Object.entries(byBranch)) {
+    const og = document.createElement('optgroup');
+    og.label = bn;
+    for (const t of ts) {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = t.title;
+      og.appendChild(opt);
+    }
+    sel.appendChild(og);
+  }
+
+  const info = selectedSlots.length === 1
+    ? `${selectedSlots[0].date} · ${selectedSlots[0].slot} – ${slotEnd(selectedSlots[0].slot)}`
+    : `${selectedSlots[0].date} · ${selectedSlots[0].slot} – ${slotEnd(selectedSlots[selectedSlots.length-1].slot)} (${selectedSlots.length} slots · ${selectedSlots.length * 0.5}h)`;
+
+  document.getElementById('slot-info').textContent = info;
+  document.getElementById('slot-note').value = '';
+  openModal('modal-slot');
+}
+
+async function assignSlot() {
+  const task_id = document.getElementById('slot-task-select').value;
+  const note    = document.getElementById('slot-note').value.trim();
+  if (!task_id) { toast('Please select a task', 'error'); return; }
+
+  const slots = selectedSlots.map(s => ({ slot_start: s.slot, slot_end: slotEnd(s.slot) }));
+  const log_date = selectedSlots[0].date;
+
+  try {
+    await POST('time-logs', { task_id, log_date, slots, note: note || null });
+    closeModal('modal-slot');
+    await loadData();
+    renderBody();
+    toast('Time logged', 'success');
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function deleteSlot(date, slot_start) {
+  if (!confirm('Remove this time entry?')) return;
+  try {
+    await DELETE('time-logs', { log_date: date, slot_start });
+    await loadData();
+    renderBody();
+    toast('Removed', 'success');
+  } catch(e) {
+    toast(e.message, 'error');
+  }
+}
+
+// ── MISC ──────────────────────────────────────────────────────
+async function addMisc() {
+  const input = document.getElementById('misc-input');
+  const desc  = input.value.trim();
+  if (!desc) return;
+  const d = currentDate.toISOString().slice(0,10);
+  try {
+    const item = await POST('time-logs?type=misc', { log_date: d, description: desc });
+    miscItems.push(item);
+    renderMisc();
+    input.value = '';
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteMisc(id) {
+  try {
+    await DELETE('time-logs?type=misc', { id });
+    miscItems = miscItems.filter(m => m.id !== id);
+    renderMisc();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+document.getElementById('misc-input').addEventListener('keydown', e => { if (e.key === 'Enter') addMisc(); });
+
+// ── NAV ───────────────────────────────────────────────────────
+function setView(v, btn) {
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('misc-section').style.display = v === 'day' ? 'block' : 'none';
+  loadData().then(render);
+}
+
+function navigate(dir) {
+  if (currentView === 'day')   currentDate.setDate(currentDate.getDate() + dir);
+  if (currentView === 'week')  currentDate.setDate(currentDate.getDate() + dir * 7);
+  if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + dir);
+  loadData().then(render);
+}
+
+function goToday() { currentDate = new Date(); loadData().then(render); }
+
+function expandHours(dir) {
+  if (dir === -1 && startHour > 0)  startHour--;
+  if (dir === 1  && endHour < 24)   endHour++;
+  render();
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>
