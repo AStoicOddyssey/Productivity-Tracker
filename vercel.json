@@ -1,5 +1,10 @@
 {
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/$1" }
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/calendar", "destination": "/calendar.html" },
+    { "source": "/tasks", "destination": "/tasks.html" },
+    { "source": "/scratchpad", "destination": "/scratchpad.html" },
+    { "source": "/reports", "destination": "/reports.html" },
+    { "source": "/admin", "destination": "/admin.html" }
   ]
 }
