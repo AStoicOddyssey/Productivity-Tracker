@@ -5,6 +5,9 @@
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/app.css", "dest": "/public/app.css" },
+    { "src": "/app.js", "dest": "/public/app.js" },
+    { "src": "/sidebar.js", "dest": "/public/sidebar.js" },
     { "src": "/dashboard", "dest": "/public/dashboard.html" },
     { "src": "/calendar", "dest": "/public/calendar.html" },
     { "src": "/tasks", "dest": "/public/tasks.html" },
