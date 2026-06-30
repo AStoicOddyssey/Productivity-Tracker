@@ -5,10 +5,17 @@ function buildSidebar(activePage, me, branches = []) {
     .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
   const branchItems = branches.map(b => `
-    <a class="nav-item ${activePage === 'branch-' + b.id ? 'active' : ''}" href="/tasks?branch=${b.id}">
-      <span class="nav-branch-dot" style="background:${b.colour};"></span>
-      ${escHtml(b.name)}
-    </a>
+    <div class="nav-item-branch" style="display:flex;align-items:center;border-radius:6px;overflow:hidden;">
+      <a class="nav-item ${activePage === 'branch-' + b.id ? 'active' : ''}"
+        href="/tasks?branch=${b.id}"
+        style="flex:1;display:flex;align-items:center;gap:10px;padding:7px 6px 7px 10px;text-decoration:none;color:inherit;font-size:13px;font-weight:500;border-radius:0;">
+        <span style="width:8px;height:8px;border-radius:50%;background:${b.colour};flex-shrink:0;display:inline-block;"></span>
+        ${escHtml(b.name)}
+      </a>
+      <button onclick="editBranch('${b.id}','${escHtml(b.name)}','${b.colour}')"
+        style="background:none;border:none;cursor:pointer;color:var(--text-3);padding:4px 8px;font-size:12px;line-height:1;flex-shrink:0;"
+        title="Edit branch">✎</button>
+    </div>
   `).join('');
 
   const adminItem = me.is_admin ? `
@@ -75,6 +82,47 @@ function buildSidebar(activePage, me, branches = []) {
         </button>
       </div>
     </div>
+
+    <!-- BRANCH MODALS (injected into every page via sidebar) -->
+    <div class="modal-backdrop" id="modal-branch-new" style="display:none;">
+      <div class="modal">
+        <div class="modal-title">New branch</div>
+        <div class="form-field">
+          <label class="form-label">Branch name *</label>
+          <input class="form-input" id="sb-branch-name" placeholder="e.g. Aloware" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Colour</label>
+          <div class="colour-picker" id="sb-colour-picker-new"></div>
+          <input type="hidden" id="sb-branch-colour-new" value="#58a6ff" />
+        </div>
+        <div class="modal-footer">
+          <button class="btn-ghost" onclick="closeModal('modal-branch-new')">Cancel</button>
+          <button class="btn-primary" onclick="sbSaveBranch()">Create</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" id="modal-branch-edit" style="display:none;">
+      <div class="modal">
+        <div class="modal-title">Edit branch</div>
+        <input type="hidden" id="sb-edit-branch-id" />
+        <div class="form-field">
+          <label class="form-label">Branch name *</label>
+          <input class="form-input" id="sb-edit-branch-name" placeholder="e.g. Aloware" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Colour</label>
+          <div class="colour-picker" id="sb-colour-picker-edit"></div>
+          <input type="hidden" id="sb-branch-colour-edit" value="#58a6ff" />
+        </div>
+        <div class="modal-footer">
+          <button class="btn-danger" style="margin-right:auto;" onclick="sbDeleteBranch()">Delete branch</button>
+          <button class="btn-ghost" onclick="closeModal('modal-branch-edit')">Cancel</button>
+          <button class="btn-primary" onclick="sbUpdateBranch()">Save</button>
+        </div>
+      </div>
+    </div>
   `;
 
   const sidebar = document.getElementById('sidebar');
@@ -82,7 +130,71 @@ function buildSidebar(activePage, me, branches = []) {
 
   // Wire new-branch button
   const nb = document.getElementById('new-branch-btn');
-  if (nb) nb.addEventListener('click', () => openModal('modal-branch'));
+  if (nb) nb.addEventListener('click', () => {
+    buildSwatches('sb-colour-picker-new', 'sb-branch-colour-new', '#58a6ff');
+    openModal('modal-branch-new');
+  });
+}
+
+function buildSwatches(pickerId, inputId, selectedColour) {
+  const picker = document.getElementById(pickerId);
+  if (!picker) return;
+  picker.innerHTML = '';
+  PALETTE.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'colour-swatch' + (c === selectedColour ? ' active' : '');
+    sw.style.background = c;
+    sw.onclick = () => {
+      picker.querySelectorAll('.colour-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      document.getElementById(inputId).value = c;
+    };
+    picker.appendChild(sw);
+  });
+}
+
+function editBranch(id, name, colour) {
+  document.getElementById('sb-edit-branch-id').value = id;
+  document.getElementById('sb-edit-branch-name').value = name;
+  document.getElementById('sb-branch-colour-edit').value = colour;
+  buildSwatches('sb-colour-picker-edit', 'sb-branch-colour-edit', colour);
+  openModal('modal-branch-edit');
+}
+
+async function sbSaveBranch() {
+  const name   = document.getElementById('sb-branch-name').value.trim();
+  const colour = document.getElementById('sb-branch-colour-new').value;
+  if (!name) { toast('Branch name required', 'error'); return; }
+  try {
+    await POST('branches', { name, colour });
+    closeModal('modal-branch-new');
+    toast('Branch created', 'success');
+    setTimeout(() => location.reload(), 600);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function sbUpdateBranch() {
+  const id     = document.getElementById('sb-edit-branch-id').value;
+  const name   = document.getElementById('sb-edit-branch-name').value.trim();
+  const colour = document.getElementById('sb-branch-colour-edit').value;
+  if (!name) { toast('Branch name required', 'error'); return; }
+  try {
+    await PATCH('branches', { id, name, colour });
+    closeModal('modal-branch-edit');
+    toast('Branch updated', 'success');
+    setTimeout(() => location.reload(), 600);
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function sbDeleteBranch() {
+  const id = document.getElementById('sb-edit-branch-id').value;
+  if (!confirm('Delete this branch? Tasks will become unassigned.')) return;
+  try {
+    await DELETE('branches', { id });
+    closeModal('modal-branch-edit');
+    toast('Branch deleted', 'success');
+    setTimeout(() => location.reload(), 600);
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 function escHtml(str) {

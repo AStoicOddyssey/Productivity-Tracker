@@ -232,7 +232,10 @@ async function loadData() {
   const { from, to } = getDateRange();
   const logs = await GET('time-logs', { from, to }).catch(() => []);
   timeLogs = {};
-  for (const log of logs) timeLogs[log.log_date + '|' + log.slot_start] = log;
+  for (const log of logs) {
+    const slotKey = (log.slot_start || '').slice(0, 5);
+    timeLogs[log.log_date + '|' + slotKey] = log;
+  }
 
   if (currentView === 'day') {
     const d = currentDate.toISOString().slice(0,10);
