@@ -17,11 +17,16 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'POST') {
-    const { name, colour } = req.body;
+    const { name, colour, hourly_rate } = req.body;
     if (!name) return res.status(400).json({ error: 'Name required' });
     const { data, error } = await supabase
       .from('branches')
-      .insert({ user_id: user.user_id, name, colour: colour || '#58a6ff' })
+      .insert({
+        user_id: user.user_id,
+        name,
+        colour: colour || '#58a6ff',
+        hourly_rate: hourly_rate != null ? hourly_rate : 133.33
+      })
       .select()
       .single();
     if (error) return res.status(500).json({ error: error.message });
@@ -29,11 +34,16 @@ export default async function handler(req, res) {
   }
 
   if (req.method === 'PATCH') {
-    const { id, name, colour, archived } = req.body;
+    const { id, name, colour, archived, hourly_rate } = req.body;
     if (!id) return res.status(400).json({ error: 'ID required' });
+    const updates = {};
+    if (name        !== undefined) updates.name = name;
+    if (colour      !== undefined) updates.colour = colour;
+    if (archived     !== undefined) updates.archived = archived;
+    if (hourly_rate !== undefined) updates.hourly_rate = hourly_rate;
     const { data, error } = await supabase
       .from('branches')
-      .update({ name, colour, archived })
+      .update(updates)
       .eq('id', id)
       .eq('user_id', user.user_id)
       .select()
