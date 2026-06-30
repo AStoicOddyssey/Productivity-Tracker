@@ -259,16 +259,10 @@ async function loadData() {
 
   // Load misc for the whole visible range (used for circles in week/month, list in day)
   miscByDate = {};
-  if (currentView === 'day') {
-    const d = currentDate.toISOString().slice(0,10);
-    const items = await GET('time-logs', { type: 'misc', date: d }).catch(() => []);
-    miscByDate[d] = items;
-  } else {
-    const days = getDaysInRange();
-    for (const d of days) {
-      const items = await GET('time-logs', { type: 'misc', date: d }).catch(() => []);
-      if (items.length) miscByDate[d] = items;
-    }
+  const miscItems = await GET('time-logs', { type: 'misc', from, to }).catch(() => []);
+  for (const item of miscItems) {
+    if (!miscByDate[item.log_date]) miscByDate[item.log_date] = [];
+    miscByDate[item.log_date].push(item);
   }
   if (currentView === 'day') renderMisc();
 }
