@@ -158,7 +158,7 @@ function renderSummary(data, from, to) {
   document.getElementById('stat-total').textContent    = data.total_hours + 'h';
   document.getElementById('stat-billable').textContent = data.billable_hours + 'h';
   document.getElementById('stat-earned').textContent   = 'R' + data.total_earned.toLocaleString('en-ZA', {minimumFractionDigits:2, maximumFractionDigits:2});
-  document.getElementById('stat-rate').textContent     = '@ R' + data.hourly_rate + '/hr';
+  document.getElementById('stat-rate').textContent     = 'Branch rates apply';
   document.getElementById('stat-period').textContent   = formatShortDate(from) + ' – ' + formatShortDate(to);
 
   const pct = data.total_hours > 0 ? Math.round(data.billable_hours / data.total_hours * 100) : 0;

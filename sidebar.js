@@ -12,7 +12,7 @@ function buildSidebar(activePage, me, branches = []) {
         <span style="width:8px;height:8px;border-radius:50%;background:${b.colour};flex-shrink:0;display:inline-block;"></span>
         ${escHtml(b.name)}
       </a>
-      <button onclick="editBranch('${b.id}','${escHtml(b.name)}','${b.colour}')"
+      <button onclick="editBranch('${b.id}','${escHtml(b.name)}','${b.colour}',${b.hourly_rate})"
         style="background:none;border:none;cursor:pointer;color:var(--text-3);padding:4px 8px;font-size:12px;line-height:1;flex-shrink:0;"
         title="Edit branch">✎</button>
     </div>
@@ -96,6 +96,10 @@ function buildSidebar(activePage, me, branches = []) {
           <div class="colour-picker" id="sb-colour-picker-new"></div>
           <input type="hidden" id="sb-branch-colour-new" value="#58a6ff" />
         </div>
+        <div class="form-field">
+          <label class="form-label">Hourly rate (R/hr)</label>
+          <input class="form-input" type="number" id="sb-branch-rate-new" step="0.01" value="133.33" />
+        </div>
         <div class="modal-footer">
           <button class="btn-ghost" onclick="closeModal('modal-branch-new')">Cancel</button>
           <button class="btn-primary" onclick="sbSaveBranch()">Create</button>
@@ -115,6 +119,10 @@ function buildSidebar(activePage, me, branches = []) {
           <label class="form-label">Colour</label>
           <div class="colour-picker" id="sb-colour-picker-edit"></div>
           <input type="hidden" id="sb-branch-colour-edit" value="#58a6ff" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Hourly rate (R/hr)</label>
+          <input class="form-input" type="number" id="sb-branch-rate-edit" step="0.01" />
         </div>
         <div class="modal-footer">
           <button class="btn-danger" style="margin-right:auto;" onclick="sbDeleteBranch()">Delete branch</button>
@@ -153,10 +161,11 @@ function buildSwatches(pickerId, inputId, selectedColour) {
   });
 }
 
-function editBranch(id, name, colour) {
+function editBranch(id, name, colour, rate) {
   document.getElementById('sb-edit-branch-id').value = id;
   document.getElementById('sb-edit-branch-name').value = name;
   document.getElementById('sb-branch-colour-edit').value = colour;
+  document.getElementById('sb-branch-rate-edit').value = rate;
   buildSwatches('sb-colour-picker-edit', 'sb-branch-colour-edit', colour);
   openModal('modal-branch-edit');
 }
@@ -164,9 +173,10 @@ function editBranch(id, name, colour) {
 async function sbSaveBranch() {
   const name   = document.getElementById('sb-branch-name').value.trim();
   const colour = document.getElementById('sb-branch-colour-new').value;
+  const rate   = parseFloat(document.getElementById('sb-branch-rate-new').value) || 133.33;
   if (!name) { toast('Branch name required', 'error'); return; }
   try {
-    await POST('branches', { name, colour });
+    await POST('branches', { name, colour, hourly_rate: rate });
     closeModal('modal-branch-new');
     toast('Branch created', 'success');
     setTimeout(() => location.reload(), 600);
@@ -177,9 +187,10 @@ async function sbUpdateBranch() {
   const id     = document.getElementById('sb-edit-branch-id').value;
   const name   = document.getElementById('sb-edit-branch-name').value.trim();
   const colour = document.getElementById('sb-branch-colour-edit').value;
+  const rate   = parseFloat(document.getElementById('sb-branch-rate-edit').value) || 133.33;
   if (!name) { toast('Branch name required', 'error'); return; }
   try {
-    await PATCH('branches', { id, name, colour });
+    await PATCH('branches', { id, name, colour, hourly_rate: rate });
     closeModal('modal-branch-edit');
     toast('Branch updated', 'success');
     setTimeout(() => location.reload(), 600);

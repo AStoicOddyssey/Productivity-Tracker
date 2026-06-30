@@ -94,7 +94,7 @@
     </div>
     <div class="form-field">
       <label class="form-label">Branch</label>
-      <select class="form-select" id="task-branch">
+      <select class="form-select" id="task-branch" onchange="onBranchChange()">
         <option value="">— No branch —</option>
       </select>
     </div>
@@ -107,6 +107,10 @@
         <label class="form-label">Due time (optional)</label>
         <input class="form-input" type="time" id="task-due-time" />
       </div>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Hourly rate (R/hr) — inherited from branch, editable</label>
+      <input class="form-input" type="number" id="task-rate" step="0.01" placeholder="133.33" />
     </div>
     <div class="form-field">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -307,6 +311,12 @@ async function onDrop(e, status) {
 }
 
 // ── TASK MODAL ────────────────────────────────────────────────
+function onBranchChange() {
+  const branchId = document.getElementById('task-branch').value;
+  const branch = branches.find(b => b.id === branchId);
+  document.getElementById('task-rate').value = branch ? branch.hourly_rate : '';
+}
+
 function openNewTask() {
   document.getElementById('modal-task-title').textContent = 'New task';
   document.getElementById('task-id').value = '';
@@ -316,6 +326,7 @@ function openNewTask() {
   document.getElementById('task-due-date').value = '';
   document.getElementById('task-due-time').value = '';
   document.getElementById('task-billable').checked = true;
+  document.getElementById('task-rate').value = '';
   document.getElementById('task-delete-btn').style.display = 'none';
   openModal('modal-task');
 }
@@ -329,6 +340,7 @@ function editTask(id) {
   document.getElementById('task-desc').value = t.description || '';
   document.getElementById('task-branch').value = t.branch_id || '';
   document.getElementById('task-billable').checked = t.billable;
+  document.getElementById('task-rate').value = t.hourly_rate != null ? t.hourly_rate : (t.branches?.hourly_rate ?? '');
   document.getElementById('task-delete-btn').style.display = 'inline-flex';
   if (t.due_at) {
     const d = new Date(t.due_at);
@@ -349,6 +361,8 @@ async function saveTask() {
   const billable = document.getElementById('task-billable').checked;
   const dueDate  = document.getElementById('task-due-date').value;
   const dueTime  = document.getElementById('task-due-time').value;
+  const rateVal  = document.getElementById('task-rate').value;
+  const hourly_rate = rateVal !== '' ? parseFloat(rateVal) : null;
 
   if (!title) { toast('Title is required', 'error'); return; }
 
@@ -357,10 +371,10 @@ async function saveTask() {
 
   try {
     if (id) {
-      const updated = await PATCH('tasks', { id, title, description: desc, branch_id: branch || null, billable, due_at });
+      const updated = await PATCH('tasks', { id, title, description: desc, branch_id: branch || null, billable, due_at, hourly_rate });
       tasks = tasks.map(t => t.id === id ? updated : t);
     } else {
-      const created = await POST('tasks', { title, description: desc, branch_id: branch || null, billable, due_at });
+      const created = await POST('tasks', { title, description: desc, branch_id: branch || null, billable, due_at, hourly_rate });
       tasks.push(created);
     }
     closeModal('modal-task');

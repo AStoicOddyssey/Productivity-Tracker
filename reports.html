@@ -60,8 +60,8 @@
             <input class="form-input" type="date" id="to-date" />
           </div>
           <div class="form-field" style="margin:0;">
-            <label class="form-label">Rate (R/hr)</label>
-            <input class="rate-input" type="number" id="rate-input" value="133.33" step="0.01" style="width:100%;" />
+            <label class="form-label">Rates</label>
+            <div style="font-size:12px;color:var(--text-3);padding:7px 0;">Set per branch — see sidebar</div>
           </div>
           <div class="form-field" style="margin:0;">
             <label class="form-label">&nbsp;</label>
@@ -72,6 +72,35 @@
           <label class="form-label">Include branches</label>
           <div class="branch-checkboxes" id="branch-checkboxes">
             <span style="color:var(--text-3);font-size:13px;">Loading…</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="report-form" id="bank-details-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+          <span class="panel-title" style="font-size:13px;font-weight:600;color:var(--text);">Bank details (for PDF export)</span>
+          <button class="btn-ghost" style="font-size:12px;padding:4px 10px;" onclick="saveBankDetails()">Save</button>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
+          <div class="form-field" style="margin:0;">
+            <label class="form-label">Bank</label>
+            <input class="form-input" id="bank-name" placeholder="e.g. FNB" />
+          </div>
+          <div class="form-field" style="margin:0;">
+            <label class="form-label">Branch code</label>
+            <input class="form-input" id="bank-branch-code" placeholder="e.g. 250655" />
+          </div>
+          <div class="form-field" style="margin:0;">
+            <label class="form-label">Account number</label>
+            <input class="form-input" id="bank-account-number" placeholder="Account number" />
+          </div>
+          <div class="form-field" style="margin:0;">
+            <label class="form-label">Account type</label>
+            <input class="form-input" id="bank-account-type" placeholder="e.g. Cheque / Savings" />
+          </div>
+          <div class="form-field" style="margin:0;">
+            <label class="form-label">Account holder</label>
+            <input class="form-input" id="bank-account-holder" placeholder="Account holder name" />
           </div>
         </div>
       </div>
@@ -155,8 +184,26 @@ async function init() {
   document.getElementById('from-date').value = new Date(y, m, 1).toISOString().slice(0,10);
   document.getElementById('to-date').value   = new Date(y, m+1, 0).toISOString().slice(0,10);
 
-  const savedRate = me.hourly_rate || 133.33;
-  document.getElementById('rate-input').value = savedRate;
+  const bank = await GET('bank-details').catch(() => ({}));
+  document.getElementById('bank-name').value            = bank.bank_name || '';
+  document.getElementById('bank-branch-code').value     = bank.branch_code || '';
+  document.getElementById('bank-account-number').value  = bank.account_number || '';
+  document.getElementById('bank-account-type').value    = bank.account_type || '';
+  document.getElementById('bank-account-holder').value  = bank.account_holder || '';
+}
+
+async function saveBankDetails() {
+  const body = {
+    bank_name:      document.getElementById('bank-name').value.trim(),
+    branch_code:    document.getElementById('bank-branch-code').value.trim(),
+    account_number: document.getElementById('bank-account-number').value.trim(),
+    account_type:   document.getElementById('bank-account-type').value.trim(),
+    account_holder: document.getElementById('bank-account-holder').value.trim()
+  };
+  try {
+    await POST('bank-details', body);
+    toast('Bank details saved', 'success');
+  } catch(e) { toast(e.message, 'error'); }
 }
 
 function buildBranchCheckboxes() {
@@ -195,7 +242,6 @@ function getSelectedBranches() {
 async function generateReport() {
   const from = document.getElementById('from-date').value;
   const to   = document.getElementById('to-date').value;
-  const rate = parseFloat(document.getElementById('rate-input').value) || 133.33;
   const selectedBranches = getSelectedBranches();
 
   if (!from || !to) { toast('Select a date range', 'error'); return; }
@@ -210,27 +256,32 @@ async function generateReport() {
     return selectedBranches.includes(branchId) || (!branchId && selectedBranches.length === branches.length);
   });
 
-  // Aggregate by branch → task
+  // Aggregate by branch → task, each with its own effective rate
   const branchMap = {};
+  let totalEarned = 0;
   for (const log of filtered) {
     const t = log.tasks;
     if (!t) continue;
     const bid = t.branch_id || '__none__';
     const bn  = t.branches?.name || 'Unassigned';
     const bc  = t.branches?.colour || '#6e7681';
-    if (!branchMap[bid]) branchMap[bid] = { name: bn, colour: bc, tasks: {} };
+    const branchRate = t.branches?.hourly_rate ?? 133.33;
+    const taskRate   = t.hourly_rate != null ? t.hourly_rate : branchRate;
+
+    if (!branchMap[bid]) branchMap[bid] = { name: bn, colour: bc, rate: branchRate, tasks: {} };
     if (!branchMap[bid].tasks[log.task_id]) {
       const full = tasks.find(tt => tt.id === log.task_id);
-      branchMap[bid].tasks[log.task_id] = { title: t.title, billable: t.billable, status: full?.status || '—', slots: 0 };
+      branchMap[bid].tasks[log.task_id] = { title: t.title, billable: t.billable, status: full?.status || '—', slots: 0, rate: taskRate };
     }
     branchMap[bid].tasks[log.task_id].slots++;
+    if (t.billable) totalEarned += 0.5 * taskRate;
   }
 
   // Weekly breakdown
   const weekLogs = buildWeekBreakdown(filtered, from, to);
 
-  reportData = { branchMap, weekLogs, rate, from, to, logs: filtered };
-  renderReport(branchMap, weekLogs, rate);
+  reportData = { branchMap, weekLogs, totalEarned, from, to, logs: filtered };
+  renderReport(branchMap, weekLogs, totalEarned);
 }
 
 function buildWeekBreakdown(logs, from, to) {
@@ -261,7 +312,7 @@ function buildWeekBreakdown(logs, from, to) {
   return weeks;
 }
 
-function renderReport(branchMap, weekLogs, rate) {
+function renderReport(branchMap, weekLogs, totalEarned) {
   const tbody = document.getElementById('report-tbody');
   let totalSlots = 0, billableSlots = 0;
   let rows = '';
@@ -275,7 +326,7 @@ function renderReport(branchMap, weekLogs, rate) {
       const statusBadge = { todo: 'badge-todo', in_progress: 'badge-inprogress', completed: 'badge-completed' }[task.status] || '';
       const statusLabel = { todo: 'To do', in_progress: 'In progress', completed: 'Completed' }[task.status] || task.status;
       taskRows += `<tr class="task-row">
-        <td>${escHtml(task.title)}</td>
+        <td>${escHtml(task.title)} <span style="color:var(--text-3);font-size:11px;">(R${task.rate}/hr)</span></td>
         <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
         <td><span class="badge ${task.billable ? 'badge-billable' : 'badge-nonbillable'}">${task.billable ? 'Yes' : 'No'}</span></td>
         <td style="text-align:right;">${task.slots * 0.5}h</td>
@@ -285,7 +336,7 @@ function renderReport(branchMap, weekLogs, rate) {
     rows += `<tr class="branch-group-row">
       <td style="display:flex;align-items:center;gap:8px;">
         <span style="width:8px;height:8px;border-radius:50%;background:${branch.colour};display:inline-block;flex-shrink:0;"></span>
-        ${escHtml(branch.name)}
+        ${escHtml(branch.name)} <span style="color:var(--text-3);font-weight:400;font-size:11px;">(R${branch.rate}/hr)</span>
       </td>
       <td></td><td></td>
       <td style="text-align:right;color:var(--accent);">${bSlots * 0.5}h</td>
@@ -307,7 +358,7 @@ function renderReport(branchMap, weekLogs, rate) {
 
   const totalHours    = totalSlots * 0.5;
   const billableHours = billableSlots * 0.5;
-  const earned        = (billableHours * rate).toFixed(2);
+  const earned        = totalEarned.toFixed(2);
 
   document.getElementById('tot-hours').textContent    = totalHours + 'h';
   document.getElementById('tot-billable').textContent  = billableHours + 'h';
@@ -339,9 +390,9 @@ function exportCSV() {
 }
 
 // ── PDF EXPORT ────────────────────────────────────────────────
-function exportPDF() {
+async function exportPDF() {
   if (!reportData) { toast('Generate a report first', 'error'); return; }
-  const { branchMap, weekLogs, rate, from, to } = reportData;
+  const { branchMap, weekLogs, totalEarned, from, to } = reportData;
 
   let totalSlots = 0, billableSlots = 0;
   for (const b of Object.values(branchMap))
@@ -349,10 +400,13 @@ function exportPDF() {
 
   const totalHours    = totalSlots * 0.5;
   const billableHours = billableSlots * 0.5;
-  const earned        = (billableHours * rate).toFixed(2);
+  const earned        = totalEarned.toFixed(2);
 
   const fromFmt = new Date(from).toLocaleDateString('en-ZA', { day:'numeric', month:'long', year:'numeric' });
   const toFmt   = new Date(to).toLocaleDateString('en-ZA', { day:'numeric', month:'long', year:'numeric' });
+
+  const bank = await GET('bank-details').catch(() => ({}));
+  const hasBankDetails = bank.bank_name || bank.account_number;
 
   let branchSection = '';
   for (const [, branch] of Object.entries(branchMap)) {
@@ -362,7 +416,7 @@ function exportPDF() {
       bSlots += task.slots;
       const status = { todo: 'To do', in_progress: 'In progress', completed: 'Completed' }[task.status] || task.status;
       taskRows += `<tr>
-        <td style="padding:6px 12px 6px 24px;color:#555;">${task.title}</td>
+        <td style="padding:6px 12px 6px 24px;color:#555;">${task.title} <span style="color:#999;font-size:10px;">(R${task.rate}/hr)</span></td>
         <td style="padding:6px 12px;color:#555;">${status}</td>
         <td style="padding:6px 12px;color:#555;">${task.billable ? 'Yes' : 'No'}</td>
         <td style="padding:6px 12px;text-align:right;color:#555;">${task.slots * 0.5}h</td>
@@ -370,7 +424,7 @@ function exportPDF() {
     }
     branchSection += `
       <tr style="background:#f3f4f6;">
-        <td colspan="3" style="padding:8px 12px;font-weight:600;color:#111;">${branch.name}</td>
+        <td colspan="3" style="padding:8px 12px;font-weight:600;color:#111;">${branch.name} <span style="color:#666;font-weight:400;font-size:11px;">(R${branch.rate}/hr)</span></td>
         <td style="padding:8px 12px;text-align:right;font-weight:600;color:#111;">${bSlots * 0.5}h</td>
       </tr>${taskRows}`;
   }
@@ -383,6 +437,18 @@ function exportPDF() {
       <td style="padding:6px 12px;text-align:right;color:#555;">${w.hours}h</td>
     </tr>`;
   }).join('');
+
+  const bankSection = hasBankDetails ? `
+  <table style="margin-top:0;">
+    <thead><tr><th colspan="2">Bank details</th></tr></thead>
+    <tbody>
+      <tr><td style="padding:6px 12px;color:#555;width:160px;">Bank</td><td style="padding:6px 12px;color:#111;">${bank.bank_name || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;color:#555;">Branch code</td><td style="padding:6px 12px;color:#111;">${bank.branch_code || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;color:#555;">Account number</td><td style="padding:6px 12px;color:#111;">${bank.account_number || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;color:#555;">Account type</td><td style="padding:6px 12px;color:#111;">${bank.account_type || '—'}</td></tr>
+      <tr><td style="padding:6px 12px;color:#555;">Account holder</td><td style="padding:6px 12px;color:#111;">${bank.account_holder || '—'}</td></tr>
+    </tbody>
+  </table>` : '';
 
   const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
   <title>Timesheet ${fromFmt} – ${toFmt}</title>
@@ -400,7 +466,7 @@ function exportPDF() {
     @media print { body { padding: 0; } }
   </style></head><body>
   <h1>Timesheet Report</h1>
-  <div class="sub">${fromFmt} – ${toFmt} &nbsp;·&nbsp; Rate: R${rate}/hr</div>
+  <div class="sub">${fromFmt} – ${toFmt}</div>
 
   <table>
     <thead><tr><th>Branch / Task</th><th>Status</th><th>Billable</th><th style="text-align:right;">Hours</th></tr></thead>
@@ -412,11 +478,14 @@ function exportPDF() {
     <tbody>${weekSection}</tbody>
   </table>
 
-  <div class="totals">
+  <div class="totals" style="margin-bottom:24px;">
     <div><div class="tot-label">Total hours</div><div class="tot-val">${totalHours}h</div></div>
     <div><div class="tot-label">Billable hours</div><div class="tot-val">${billableHours}h</div></div>
     <div><div class="tot-label">Total earned</div><div class="tot-val">R${parseFloat(earned).toLocaleString('en-ZA',{minimumFractionDigits:2})}</div></div>
   </div>
+
+  ${bankSection}
+
   <script>window.onload=()=>window.print();<\/script>
   </body></html>`;
 
