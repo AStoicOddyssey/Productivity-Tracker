@@ -10,10 +10,11 @@ export default async function handler(req, res) {
   // ── MISC ITEMS (/api/time-logs?type=misc) ────────────────
   if (type === 'misc') {
     if (req.method === 'GET') {
-      const { date } = req.query;
+      const { date, from, to } = req.query;
       let query = supabase.from('misc_items').select('*')
         .eq('user_id', user.user_id).order('created_at', { ascending: true });
       if (date) query = query.eq('log_date', date);
+      else if (from && to) query = query.gte('log_date', from).lte('log_date', to);
       const { data, error } = await query;
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json(data);
@@ -41,7 +42,7 @@ export default async function handler(req, res) {
   if (req.method === 'GET') {
     const { date, from, to } = req.query;
     let query = supabase.from('time_logs')
-      .select('*, tasks(id, title, billable, branch_id, branches(name, colour))')
+      .select('*, tasks(id, title, billable, branch_id, hourly_rate, branches(name, colour, hourly_rate))')
       .eq('user_id', user.user_id)
       .order('slot_start', { ascending: true });
     if (date) query = query.eq('log_date', date);
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
     }));
     const { data, error } = await supabase.from('time_logs')
       .upsert(rows, { onConflict: 'user_id,log_date,slot_start' })
-      .select('*, tasks(id, title, billable, branch_id, branches(name, colour))');
+      .select('*, tasks(id, title, billable, branch_id, hourly_rate, branches(name, colour, hourly_rate))');
     if (error) return res.status(500).json({ error: error.message });
     return res.status(201).json(data);
   }
