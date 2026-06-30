@@ -333,7 +333,7 @@ function renderGrid() {
         const bg = colourBg(colour, 0.35);
         html += `<div class="cal-entry" style="background:${bg};color:${colour};" title="${escHtml(t?.title||'')} ${slot}-${slotEnd(slot)}" onclick="event.stopPropagation()">
           <span class="cal-entry-name">${escHtml(t?.title || '')}</span>
-          <button class="cal-entry-del" onclick="deleteSlot('${d}','${slot}')">×</button>
+          <button class="cal-entry-del" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteSlot('${d}','${slot}')">×</button>
         </div>`;
       }
       html += '</td>';
