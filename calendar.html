@@ -33,7 +33,7 @@
   .cal-col-head {
     position: sticky; top: 0; z-index: 2; background: var(--surface-2);
     font-size: 10px; font-weight: 500; color: var(--text-3);
-    padding: 6px 2px; text-align: center; width: 44px; min-width: 44px;
+    padding: 6px 2px; text-align: center; width: 90px; min-width: 90px;
   }
   .cal-col-head.hour-mark { color: var(--text-2); font-weight: 600; }
   .cal-row-head {
@@ -52,14 +52,17 @@
   }
   .misc-circle:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
 
-  .cal-cell { padding: 0; min-width: 44px; width: 44px; height: 30px; cursor: pointer; position: relative; transition: background 0.1s; user-select: none; }
+  .cal-cell { padding: 0; min-width: 90px; width: 90px; height: 32px; cursor: pointer; position: relative; transition: background 0.1s; user-select: none; }
   .cal-cell:hover { background: var(--surface-2); }
   .cal-cell.selecting { background: var(--accent-dim); }
-  .cal-entry { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 600; overflow: hidden; cursor: pointer; position: relative; }
+  .cal-entry {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 4px; padding: 0 6px; font-size: 10px; font-weight: 600; overflow: hidden; cursor: pointer; position: relative;
+  }
+  .cal-entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
   .cal-entry-del {
-    position: absolute; top: 0; right: 0; opacity: 0;
-    background: rgba(0,0,0,0.4); border: none; cursor: pointer;
-    color: #fff; font-size: 10px; line-height: 1; padding: 1px 3px;
+    opacity: 0; background: rgba(0,0,0,0.35); border: none; cursor: pointer;
+    color: #fff; font-size: 11px; line-height: 1; padding: 2px 5px; border-radius: 3px; flex-shrink: 0;
   }
   .cal-entry:hover .cal-entry-del { opacity: 1; }
 
@@ -329,6 +332,7 @@ function renderGrid() {
         const colour = t?.branches?.colour || '#58a6ff';
         const bg = colourBg(colour, 0.35);
         html += `<div class="cal-entry" style="background:${bg};color:${colour};" title="${escHtml(t?.title||'')} ${slot}-${slotEnd(slot)}" onclick="event.stopPropagation()">
+          <span class="cal-entry-name">${escHtml(t?.title || '')}</span>
           <button class="cal-entry-del" onclick="deleteSlot('${d}','${slot}')">×</button>
         </div>`;
       }
