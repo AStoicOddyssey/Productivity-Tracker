@@ -173,7 +173,8 @@ function editBranch(id, name, colour, rate) {
 async function sbSaveBranch() {
   const name   = document.getElementById('sb-branch-name').value.trim();
   const colour = document.getElementById('sb-branch-colour-new').value;
-  const rate   = parseFloat(document.getElementById('sb-branch-rate-new').value) || 133.33;
+  const rateVal = document.getElementById('sb-branch-rate-new').value;
+  const rate   = rateVal !== '' ? parseFloat(rateVal) : 133.33;
   if (!name) { toast('Branch name required', 'error'); return; }
   try {
     await POST('branches', { name, colour, hourly_rate: rate });
@@ -187,7 +188,8 @@ async function sbUpdateBranch() {
   const id     = document.getElementById('sb-edit-branch-id').value;
   const name   = document.getElementById('sb-edit-branch-name').value.trim();
   const colour = document.getElementById('sb-branch-colour-edit').value;
-  const rate   = parseFloat(document.getElementById('sb-branch-rate-edit').value) || 133.33;
+  const rateVal = document.getElementById('sb-branch-rate-edit').value;
+  const rate   = rateVal !== '' ? parseFloat(rateVal) : 133.33;
   if (!name) { toast('Branch name required', 'error'); return; }
   try {
     await PATCH('branches', { id, name, colour, hourly_rate: rate });
