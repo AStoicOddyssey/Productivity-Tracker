@@ -36,8 +36,8 @@
   }
   .tt-block:hover { filter: brightness(1.15); }
   .tt-block-title { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .tt-block-time { font-size: 9px; opacity: 0.85; }
-  .tt-block-loc  { font-size: 9px; opacity: 0.75; }
+  .tt-block-time { font-size: 9px; opacity: 0.85; white-space: nowrap; }
+  .tt-block-loc  { font-size: 9px; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   /* HOUR PILL */
   .hour-pill { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; transition: border-color 0.1s, color 0.1s; background: var(--surface-2); }
@@ -328,55 +328,84 @@ function renderGrid() {
     html += `<tr>`;
     html += `<td class="tt-time-cell ${isHour ? 'hour' : ''}">${isHour ? slot : ''}</td>`;
     for (let di = 0; di < 7; di++) {
-      html += `<td class="tt-cell" data-day="${DAYS_KEYS[di]}" data-slot="${slot}" id="cell-${DAYS_KEYS[di]}-${si}"></td>`;
+      html += `<td class="tt-cell" data-day="${DAYS_KEYS[di]}" data-slot="${slot}"></td>`;
     }
     html += '</tr>';
   }
   html += '</tbody>';
   table.innerHTML = html;
 
-  // Now inject item blocks
-  const ROW_H = 28; // matches height in CSS
-  for (const item of items) {
-    for (const slot of (item.timetable_slots || [])) {
-      for (const day of slot.days) {
-        const startSlot = (slot.start_time || '').slice(0,5);
-        const endSlot   = (slot.end_time   || '').slice(0,5);
-        const startIdx  = slots.indexOf(startSlot);
-        if (startIdx === -1) continue;
+  document.getElementById('hour-pill').textContent =
+    String(startHour).padStart(2,'0') + ':00 – ' + String(endHour).padStart(2,'0') + ':00';
 
-        // Calculate height in rows
-        const [sh, sm] = startSlot.split(':').map(Number);
-        const [eh, em] = endSlot.split(':').map(Number);
-        const durationMins = (eh * 60 + em) - (sh * 60 + sm);
-        const rows = durationMins / 30;
+  // Defer block injection until DOM is painted so getBoundingClientRect works
+  requestAnimationFrame(() => injectBlocks(slots));
+}
 
-        const cell = document.getElementById(`cell-${day}-${startIdx}`);
-        if (!cell) continue;
+function injectBlocks(slots) {
+  const ROW_H = 28;
+  const GRID_START_MINS = startHour * 60;
+  const table = document.getElementById('tt-table');
+  const wrap  = document.getElementById('tt-wrap');
+
+  function timeToMins(t) {
+    const [h, m] = (t || '00:00').slice(0,5).split(':').map(Number);
+    return h * 60 + m;
+  }
+
+  // Remove old overlays
+  wrap.querySelectorAll('.day-overlay').forEach(o => o.remove());
+  wrap.style.position = 'relative';
+
+  const headerCells = table.querySelectorAll('thead th');
+  const tbodyEl = table.querySelector('tbody');
+  const wrapRect = wrap.getBoundingClientRect();
+  const tbodyTop = tbodyEl.getBoundingClientRect().top - wrapRect.top + wrap.scrollTop;
+
+  for (let di = 0; di < 7; di++) {
+    const day = DAYS_KEYS[di];
+    const th = headerCells[di + 1];
+    if (!th) continue;
+
+    const thRect = th.getBoundingClientRect();
+    const leftPx = thRect.left - wrapRect.left + wrap.scrollLeft;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'day-overlay';
+    overlay.style.cssText = `position:absolute;left:${leftPx}px;top:${tbodyTop}px;width:${thRect.width}px;height:${slots.length * ROW_H}px;pointer-events:none;z-index:2;`;
+    wrap.appendChild(overlay);
+
+    for (const item of items) {
+      for (const slot of (item.timetable_slots || [])) {
+        if (!slot.days.includes(day)) continue;
+
+        const startMins = timeToMins(slot.start_time);
+        const endMins   = timeToMins(slot.end_time);
+        if (endMins <= startMins || endMins <= GRID_START_MINS || startMins >= endHour * 60) continue;
+
+        const clampedStart = Math.max(startMins, GRID_START_MINS);
+        const clampedEnd   = Math.min(endMins, endHour * 60);
+        const blockTop = ((clampedStart - GRID_START_MINS) / 30) * ROW_H + 1;
+        const blockH   = Math.max(((clampedEnd - clampedStart) / 30) * ROW_H - 3, 12);
 
         const colour = item.colour || '#58a6ff';
         const bg = colourBg(colour, 0.25);
-        const typeLabel = item.item_type === 'course'
-          ? [item.course_type, startSlot + '–' + endSlot, slot.location || item.location].filter(Boolean).join('\n')
-          : [startSlot + '–' + endSlot, slot.location].filter(Boolean).join('\n');
+        const displayStart = (slot.start_time || '').slice(0,5);
+        const displayEnd   = (slot.end_time   || '').slice(0,5);
 
         const block = document.createElement('div');
         block.className = 'tt-block';
-        block.style.cssText = `background:${bg};color:${colour};border:1px solid ${colour};top:1px;height:${ROW_H * rows - 3}px;`;
+        block.style.cssText = `background:${bg};color:${colour};border:1px solid ${colour};top:${blockTop}px;height:${blockH}px;pointer-events:all;left:2px;right:2px;`;
         block.innerHTML = `
           <div class="tt-block-title">${escHtml(item.title)}${item.course_type ? ' ' + escHtml(item.course_type) : ''}</div>
-          <div class="tt-block-time">${startSlot}–${endSlot}</div>
+          <div class="tt-block-time">${displayStart}–${displayEnd}</div>
           ${(slot.location || item.location) ? `<div class="tt-block-loc">${escHtml(slot.location || item.location)}</div>` : ''}
         `;
         block.onclick = (e) => { e.stopPropagation(); openEditItem(item.id); };
-        cell.style.position = 'relative';
-        cell.appendChild(block);
+        overlay.appendChild(block);
       }
     }
   }
-
-  document.getElementById('hour-pill').textContent =
-    String(startHour).padStart(2,'0') + ':00 – ' + String(endHour).padStart(2,'0') + ':00';
 }
 
 // ── COLOUR PICKER ─────────────────────────────────────────────
