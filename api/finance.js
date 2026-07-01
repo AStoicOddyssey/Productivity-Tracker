@@ -19,21 +19,21 @@ export default async function handler(req, res) {
       return res.status(200).json(data);
     }
     if (req.method === 'POST') {
-      const { type: itype, name, amount } = req.body;
+      const { type: itype, name, amount, hours } = req.body;
       if (!name || !itype) return res.status(400).json({ error: 'name and type required' });
       const { data, error } = await supabase
         .from('finance_items')
-        .insert({ user_id: user.user_id, type: itype, name, amount: amount || 0 })
+        .insert({ user_id: user.user_id, type: itype, name, amount: amount || 0, hours: hours ?? null })
         .select().single();
       if (error) return res.status(500).json({ error: error.message });
       return res.status(201).json(data);
     }
     if (req.method === 'PATCH') {
-      const { id, name, amount } = req.body;
+      const { id, name, amount, hours } = req.body;
       if (!id) return res.status(400).json({ error: 'ID required' });
       const { data, error } = await supabase
         .from('finance_items')
-        .update({ name, amount })
+        .update({ name, amount, hours: hours ?? null })
         .eq('id', id).eq('user_id', user.user_id)
         .select().single();
       if (error) return res.status(500).json({ error: error.message });
