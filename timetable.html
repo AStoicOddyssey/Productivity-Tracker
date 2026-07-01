@@ -35,6 +35,8 @@
     transition: filter 0.1s;
   }
   .tt-block:hover { filter: brightness(1.15); }
+  .tt-block-del { background: rgba(0,0,0,0.3); border: none; cursor: pointer; color: #fff; font-size: 11px; line-height: 1; padding: 1px 4px; border-radius: 3px; opacity: 0; flex-shrink: 0; }
+  .tt-block:hover .tt-block-del { opacity: 1; }
   .tt-block-title { font-size: 10px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.3; }
   .tt-block-time { font-size: 9px; opacity: 0.85; white-space: normal; line-height: 1.3; word-break: break-all; }
   .tt-block-loc  { font-size: 9px; opacity: 0.75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -397,7 +399,10 @@ function injectBlocks(slots) {
         block.className = 'tt-block';
         block.style.cssText = `background:${bg};color:${colour};border:1px solid ${colour};top:${blockTop}px;height:${blockH}px;pointer-events:all;left:2px;right:2px;`;
         block.innerHTML = `
-          <div class="tt-block-title">${escHtml(item.title)}${item.course_type ? ' ' + escHtml(item.course_type) : ''}</div>
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:2px;">
+            <div class="tt-block-title" style="flex:1;">${escHtml(item.title)}${item.course_type ? ' ' + escHtml(item.course_type) : ''}</div>
+            <button class="tt-block-del" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();removeSlot('${item.id}','${slot.id}')" title="Remove">×</button>
+          </div>
           <div class="tt-block-time">${displayStart}–${displayEnd}</div>
           ${(slot.location || item.location) ? `<div class="tt-block-loc">${escHtml(slot.location || item.location)}</div>` : ''}
         `;
@@ -778,6 +783,35 @@ function applyHourRange() {
 // Override the modal-add open button to use our function
 document.querySelector('.btn-ghost[onclick="openModal(\'modal-add\')"]')
   ?.setAttribute('onclick', 'openAddModal()');
+
+async function removeSlot(itemId, slotId) {
+  const item = items.find(i => i.id === itemId);
+  if (!item) return;
+
+  const remainingSlots = (item.timetable_slots || []).filter(s => s.id !== slotId);
+
+  try {
+    if (remainingSlots.length === 0) {
+      // Last slot — delete the whole item
+      await DELETE('timetables?type=items', { id: itemId });
+      items = items.filter(i => i.id !== itemId);
+    } else {
+      // Update item with remaining slots
+      const updated = await PATCH('timetables?type=items', {
+        id: itemId,
+        slots: remainingSlots.map(s => ({
+          days: s.days,
+          start_time: s.start_time,
+          end_time: s.end_time,
+          location: s.location || null
+        }))
+      });
+      items = items.map(i => i.id === itemId ? updated : i);
+    }
+    renderGrid();
+    toast('Removed', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
 
 function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
