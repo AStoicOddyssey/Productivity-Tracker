@@ -5,6 +5,7 @@
     { "source": "/tasks", "destination": "/tasks.html" },
     { "source": "/scratchpad", "destination": "/scratchpad.html" },
     { "source": "/reports", "destination": "/reports.html" },
-    { "source": "/admin", "destination": "/admin.html" }
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/timetable", "destination": "/timetable.html" }
   ]
 }
