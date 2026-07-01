@@ -18,7 +18,7 @@
   .month-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
   /* STAT CARDS */
-  .stat-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 16px; }
+  .stat-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 16px; }
 
   /* TABLES */
   .fin-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -98,6 +98,11 @@
           <div class="stat-sub">Income − expenses</div>
         </div>
         <div class="stat-card">
+          <div class="stat-label">Hours worked</div>
+          <div class="stat-value text-accent" id="stat-hours">0h</div>
+          <div class="stat-sub" id="stat-rate">— /hr</div>
+        </div>
+        <div class="stat-card">
           <div class="stat-label">Budget</div>
           <div class="stat-value text-accent" id="stat-budget">R0</div>
           <div class="budget-bar-wrap"><div class="budget-bar" id="budget-bar" style="width:0%;"></div></div>
@@ -116,10 +121,16 @@
           <div class="legend" id="legend-income"></div>
         </div>
         <div class="chart-card">
-          <div class="chart-title">Expense breakdown</div>
+          <div class="chart-title" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>Expense breakdown</span>
+            <div class="view-tabs" style="padding:2px;gap:2px;">
+              <button class="view-tab active" id="toggle-expenses" onclick="setExpenseView('expenses',this)">% of expenses</button>
+              <button class="view-tab" id="toggle-income" onclick="setExpenseView('income',this)">% of income</button>
+            </div>
+          </div>
           <div class="chart-wrap">
             <canvas id="chart-expense" width="140" height="140"></canvas>
-            <div class="donut-label"><div class="donut-val" id="donut-expense-val">R0</div><div class="donut-sub">total</div></div>
+            <div class="donut-label"><div class="donut-val" id="donut-expense-val">R0</div><div class="donut-sub" id="donut-expense-sub">total</div></div>
           </div>
           <div class="legend" id="legend-expense"></div>
         </div>
@@ -143,7 +154,8 @@
           <div id="income-rows"></div>
           <div class="fin-add-row">
             <input class="form-input" id="income-name" placeholder="Name" style="flex:1;" />
-            <input class="form-input" id="income-amount" placeholder="Amount" type="number" style="width:110px;" />
+            <input class="form-input" id="income-amount" placeholder="Amount (R)" type="number" style="width:110px;" />
+            <input class="form-input" id="income-hours" placeholder="Hours" type="number" style="width:80px;" />
             <button class="btn-primary" style="padding:6px 12px;" onclick="addItem('income')">Add</button>
           </div>
         </div>
@@ -191,6 +203,10 @@
     <div class="form-field">
       <label class="form-label">Default amount (R)</label>
       <input class="form-input" type="number" id="edit-item-amount" />
+    </div>
+    <div class="form-field" id="edit-hours-field">
+      <label class="form-label">Hours worked this month (income only)</label>
+      <input class="form-input" type="number" id="edit-item-hours" placeholder="optional" />
     </div>
     <div class="form-field">
       <label class="form-label" id="override-label">This month's amount (R) — leave blank to use default</label>
@@ -266,6 +282,7 @@ let balanceLogs = [];
 let budget = 0;
 let currentMonth = new Date();
 let editingItemId = null;
+let expenseView = 'expenses'; // 'expenses' or 'income'
 
 function monthStr(d) {
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
@@ -316,6 +333,13 @@ function navigate(dir) {
   loadOverrides().then(render);
 }
 
+function setExpenseView(view, btn) {
+  expenseView = view;
+  document.querySelectorAll('#toggle-expenses, #toggle-income').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  render();
+}
+
 function render() {
   const label = currentMonth.toLocaleDateString('en-ZA', { month: 'long', year: 'numeric' });
   document.getElementById('month-label').textContent = label;
@@ -328,6 +352,10 @@ function render() {
   const totalExpense = expenseItems.reduce((s, i) => s + effectiveAmount(i), 0);
   const net = totalIncome - totalExpense;
 
+  // Hours
+  const totalHours = incomeItems.reduce((s, i) => s + (i.hours || 0), 0);
+  const hourlyRate = totalHours > 0 ? totalIncome / totalHours : 0;
+
   // Stat cards
   document.getElementById('stat-income').textContent    = fmtR(totalIncome);
   document.getElementById('stat-income-count').textContent = incomeItems.length + ' source' + (incomeItems.length !== 1 ? 's' : '');
@@ -335,6 +363,8 @@ function render() {
   document.getElementById('stat-expenses-count').textContent = expenseItems.length + ' item' + (expenseItems.length !== 1 ? 's' : '');
   document.getElementById('stat-net').textContent       = fmtR(net);
   document.getElementById('stat-net').className         = 'stat-value ' + (net >= 0 ? 'text-success' : 'text-danger');
+  document.getElementById('stat-hours').textContent     = totalHours + 'h';
+  document.getElementById('stat-rate').textContent      = totalHours > 0 ? fmtR(hourlyRate) + '/hr' : '— /hr';
   document.getElementById('stat-budget').textContent    = fmtR(budget);
   document.getElementById('stat-budget-sub').textContent = budget > 0
     ? `${Math.round(totalExpense / budget * 100)}% of budget used`
@@ -349,11 +379,17 @@ function render() {
   renderTable('expense', expenseItems, totalExpense);
 
   // Charts
-  drawDonut('chart-income', 'donut-income-val', 'legend-income', incomeItems, totalIncome);
-  drawDonut('chart-expense', 'donut-expense-val', 'legend-expense', expenseItems, totalExpense);
-  drawBar(totalIncome, totalExpense, net);
+  drawDonut('chart-income', 'donut-income-val', 'legend-income', incomeItems, totalIncome, totalIncome, false);
 
-  // Balance log
+  if (expenseView === 'expenses') {
+    document.getElementById('donut-expense-sub').textContent = 'of expenses';
+    drawDonut('chart-expense', 'donut-expense-val', 'legend-expense', expenseItems, totalExpense, totalExpense, false);
+  } else {
+    document.getElementById('donut-expense-sub').textContent = 'of income';
+    drawDonutOfIncome('chart-expense', 'donut-expense-val', 'legend-expense', expenseItems, totalExpense, totalIncome, net);
+  }
+
+  drawBar(totalIncome, totalExpense, net);
   renderBalanceLog();
 }
 
@@ -369,7 +405,7 @@ function renderTable(type, rows, total) {
     const hasOverride = !!overrides[item.id];
     const colour = type === 'income' ? 'var(--success)' : 'var(--danger)';
     return `<div class="fin-row">
-      <span class="fin-row-name">${escHtml(item.name)}${hasOverride ? '<span class="override-badge">this month</span>' : ''}</span>
+      <span class="fin-row-name">${escHtml(item.name)}${hasOverride ? '<span class="override-badge">this month</span>' : ''}${item.type === 'income' && item.hours ? `<span style="font-size:10px;color:var(--text-3);margin-left:6px;">${item.hours}h</span>` : ''}</span>
       <span class="fin-row-amount" style="color:${colour};">${fmtR(eff)}</span>
       <div class="fin-row-actions">
         <button class="fin-action-btn" onclick="openEditItem('${item.id}')">✎</button>
@@ -396,7 +432,7 @@ function renderBalanceLog() {
 }
 
 // ── CHARTS ────────────────────────────────────────────────────
-function drawDonut(canvasId, valId, legendId, rows, total) {
+function drawDonut(canvasId, valId, legendId, rows, total, denominator, showNet) {
   const canvas = document.getElementById(canvasId);
   const ctx = canvas.getContext('2d');
   const cx = 70, cy = 70, r = 58, thick = 16;
@@ -411,25 +447,67 @@ function drawDonut(canvasId, valId, legendId, rows, total) {
   }
 
   let start = -Math.PI / 2;
-  const colours = PALETTE;
   rows.forEach((item, i) => {
     const amt = effectiveAmount(item);
-    const slice = (amt / total) * Math.PI * 2;
-    const c = colours[i % colours.length];
+    const slice = (amt / denominator) * Math.PI * 2;
+    const c = PALETTE[i % PALETTE.length];
     ctx.beginPath(); ctx.arc(cx, cy, r, start, start + slice);
     ctx.strokeStyle = c; ctx.lineWidth = thick; ctx.stroke();
     start += slice;
   });
 
   document.getElementById(legendId).innerHTML = rows.map((item, i) => {
-    const c = colours[i % colours.length];
-    const pct = total > 0 ? Math.round(effectiveAmount(item) / total * 100) : 0;
+    const c = PALETTE[i % PALETTE.length];
+    const pct = denominator > 0 ? Math.round(effectiveAmount(item) / denominator * 100) : 0;
     return `<div class="legend-item">
       <span class="legend-dot" style="background:${c};"></span>
       <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(item.name)}</span>
       <span class="legend-val">${pct}%</span>
     </div>`;
   }).join('');
+}
+
+function drawDonutOfIncome(canvasId, valId, legendId, expenseItems, totalExpense, totalIncome, net) {
+  const canvas = document.getElementById(canvasId);
+  const ctx = canvas.getContext('2d');
+  const cx = 70, cy = 70, r = 58, thick = 16;
+  ctx.clearRect(0, 0, 140, 140);
+  document.getElementById(valId).textContent = fmtR(totalExpense);
+
+  if (!totalIncome) {
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+    ctx.strokeStyle = '#21262d'; ctx.lineWidth = thick; ctx.stroke();
+    document.getElementById(legendId).innerHTML = '';
+    return;
+  }
+
+  let start = -Math.PI / 2;
+  expenseItems.forEach((item, i) => {
+    const amt = effectiveAmount(item);
+    const slice = (amt / totalIncome) * Math.PI * 2;
+    const c = PALETTE[i % PALETTE.length];
+    ctx.beginPath(); ctx.arc(cx, cy, r, start, start + slice);
+    ctx.strokeStyle = c; ctx.lineWidth = thick; ctx.stroke();
+    start += slice;
+  });
+
+  // Net slice
+  if (net > 0) {
+    const netSlice = (net / totalIncome) * Math.PI * 2;
+    ctx.beginPath(); ctx.arc(cx, cy, r, start, start + netSlice);
+    ctx.strokeStyle = '#3fb950'; ctx.lineWidth = thick; ctx.stroke();
+  }
+
+  const legendRows = expenseItems.map((item, i) => {
+    const c = PALETTE[i % PALETTE.length];
+    const pct = Math.round(effectiveAmount(item) / totalIncome * 100);
+    return `<div class="legend-item"><span class="legend-dot" style="background:${c};"></span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(item.name)}</span><span class="legend-val">${pct}%</span></div>`;
+  });
+  if (net > 0) {
+    const pct = Math.round(net / totalIncome * 100);
+    legendRows.push(`<div class="legend-item"><span class="legend-dot" style="background:#3fb950;"></span><span style="flex:1;">Net retained</span><span class="legend-val">${pct}%</span></div>`);
+  }
+  document.getElementById(legendId).innerHTML = legendRows.join('');
 }
 
 function drawBar(income, expense, net) {
@@ -475,12 +553,15 @@ function drawBar(income, expense, net) {
 async function addItem(type) {
   const name   = document.getElementById(type + '-name').value.trim();
   const amount = parseFloat(document.getElementById(type + '-amount').value) || 0;
+  const hoursEl = document.getElementById(type + '-hours');
+  const hours  = hoursEl && hoursEl.value !== '' ? parseFloat(hoursEl.value) : null;
   if (!name) { toast('Name required', 'error'); return; }
   try {
-    const item = await POST('finance?type=items', { type, name, amount });
+    const item = await POST('finance?type=items', { type, name, amount, hours });
     items.push(item);
     document.getElementById(type + '-name').value = '';
     document.getElementById(type + '-amount').value = '';
+    if (hoursEl) hoursEl.value = '';
     render();
     toast('Added', 'success');
   } catch(e) { toast(e.message, 'error'); }
@@ -495,6 +576,8 @@ function openEditItem(id) {
   document.getElementById('edit-item-type').value = item.type;
   document.getElementById('edit-item-name').value   = item.name;
   document.getElementById('edit-item-amount').value = item.amount;
+  document.getElementById('edit-item-hours').value  = item.hours ?? '';
+  document.getElementById('edit-hours-field').style.display = item.type === 'income' ? 'block' : 'none';
   document.getElementById('edit-item-override').value = overrides[id]?.amount ?? '';
   document.getElementById('override-label').textContent =
     `${currentMonth.toLocaleDateString('en-ZA', { month: 'long' })} override (R) — leave blank to use default`;
@@ -505,13 +588,14 @@ async function saveItem() {
   const id       = document.getElementById('edit-item-id').value;
   const name     = document.getElementById('edit-item-name').value.trim();
   const amount   = parseFloat(document.getElementById('edit-item-amount').value) || 0;
+  const hoursVal = document.getElementById('edit-item-hours').value;
+  const hours    = hoursVal !== '' ? parseFloat(hoursVal) : null;
   const overrideVal = document.getElementById('edit-item-override').value;
 
   if (!name) { toast('Name required', 'error'); return; }
 
   try {
-    // Update base item
-    const updated = await PATCH('finance?type=items', { id, name, amount });
+    const updated = await PATCH('finance?type=items', { id, name, amount, hours });
     items = items.map(i => i.id === id ? updated : i);
 
     // Handle override
