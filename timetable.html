@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Timetable — Productivity Tracker</title>
+<link rel="stylesheet" href="/app.css" />
+<style>
+  .tt-topbar-extra { display: flex; align-items: center; gap: 8px; flex: 1; }
+  .tt-select { background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 13px; padding: 5px 10px; outline: none; cursor: pointer; max-width: 260px; }
+  .tt-select:focus { border-color: var(--accent); }
+  .tt-title-input { background: none; border: none; border-bottom: 1px solid transparent; color: var(--text); font-family: var(--font); font-size: 14px; font-weight: 600; outline: none; padding: 2px 4px; max-width: 300px; }
+  .tt-title-input:focus { border-bottom-color: var(--accent); }
+  .tt-title-input::placeholder { color: var(--text-3); }
+
+  /* GRID */
+  .tt-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: auto; max-height: calc(100vh - 180px); }
+  .tt-table { border-collapse: collapse; table-layout: fixed; }
+  .tt-table th, .tt-table td { border: 1px solid var(--border); }
+  .tt-corner { position: sticky; top:0; left:0; z-index: 3; background: var(--surface-2); width: 64px; min-width: 64px; }
+  .tt-col-head { position: sticky; top:0; z-index:2; background: var(--surface-2); font-size: 12px; font-weight: 600; color: var(--text-2); padding: 8px 4px; text-align: center; min-width: 140px; width: 140px; }
+  .tt-col-head.today { color: var(--accent); }
+  .tt-time-cell { position: sticky; left:0; z-index:1; background: var(--surface-2); font-size: 10px; color: var(--text-3); padding: 0 6px; white-space: nowrap; width: 64px; min-width: 64px; height: 28px; vertical-align: top; padding-top: 4px; }
+  .tt-time-cell.hour { color: var(--text-2); font-weight: 600; }
+  .tt-cell { width: 140px; min-width: 140px; height: 28px; padding: 0; position: relative; vertical-align: top; cursor: pointer; }
+  .tt-cell:hover { background: var(--surface-2); }
+
+  /* ITEM BLOCKS — absolutely positioned spanning multiple rows */
+  .tt-block {
+    position: absolute; left: 2px; right: 2px;
+    border-radius: 5px; padding: 4px 6px;
+    font-size: 10px; font-weight: 600;
+    overflow: hidden; cursor: pointer; z-index: 1;
+    display: flex; flex-direction: column; gap: 1px;
+    transition: filter 0.1s;
+  }
+  .tt-block:hover { filter: brightness(1.15); }
+  .tt-block-title { font-size: 11px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tt-block-time { font-size: 9px; opacity: 0.85; }
+  .tt-block-loc  { font-size: 9px; opacity: 0.75; }
+
+  /* HOUR PILL */
+  .hour-pill { border: 1px solid var(--border); border-radius: var(--radius); padding: 4px 12px; font-size: 12px; color: var(--text-2); cursor: pointer; transition: border-color 0.1s, color 0.1s; background: var(--surface-2); }
+  .hour-pill:hover { border-color: var(--accent); color: var(--text); }
+
+  /* SLIDER */
+  .slider-wrap { padding: 24px 10px 10px; }
+  .slider-track { position: relative; height: 6px; background: var(--surface-3); border-radius: 3px; margin: 0 8px; }
+  .slider-range { position: absolute; height: 100%; background: var(--accent); border-radius: 3px; }
+  .slider-handle { position: absolute; top: 50%; width: 16px; height: 16px; background: var(--accent); border: 2px solid var(--bg); border-radius: 50%; transform: translate(-50%,-50%); cursor: grab; z-index: 2; }
+  .slider-handle:active { cursor: grabbing; }
+  .slider-labels { display: flex; justify-content: space-between; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+
+  /* MEETING TIME CARD */
+  .meeting-card { background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 12px; margin-bottom: 10px; position: relative; }
+  .meeting-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .meeting-remove { background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 16px; line-height: 1; }
+  .meeting-remove:hover { color: var(--danger); }
+  .day-checks { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
+  .day-check-label { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10px; color: var(--text-3); cursor: pointer; }
+  .day-check-label input { cursor: pointer; }
+  .time-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 12px; color: var(--text-2); }
+  .time-input { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); font-family: var(--font); font-size: 13px; padding: 5px 8px; width: 70px; outline: none; }
+  .time-input:focus { border-color: var(--accent); }
+  .add-meeting-btn { width: 100%; background: none; border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text-3); font-family: var(--font); font-size: 12px; padding: 8px; cursor: pointer; transition: border-color 0.1s, color 0.1s; margin-bottom: 4px; }
+  .add-meeting-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .type-tabs { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; gap: 2px; margin-bottom: 16px; }
+  .type-tab { flex: 1; padding: 5px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-2); border: none; background: none; font-family: var(--font); transition: background 0.1s, color 0.1s; }
+  .type-tab.active { background: var(--surface-3); color: var(--text); }
+
+  .colour-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .colour-preview { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border); flex-shrink: 0; }
+
+  /* PDF MODAL */
+  .pdf-mode-toggle { display: flex; gap: 12px; margin-bottom: 16px; }
+  .pdf-mode-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+
+  .empty-tt { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; color: var(--text-3); font-size: 13px; gap: 12px; }
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="tt-topbar-extra">
+        <select class="tt-select" id="tt-select" onchange="switchTimetable()"></select>
+        <button class="btn-ghost" onclick="newTimetable()" style="font-size:12px;padding:4px 10px;">+ New</button>
+        <button class="btn-danger" id="tt-delete-btn" onclick="deleteTimetable()" style="font-size:12px;padding:4px 10px;display:none;">Delete</button>
+      </div>
+      <div class="topbar-actions">
+        <div class="hour-pill" id="hour-pill" onclick="openHourSlider()">07:00 – 19:00</div>
+        <button class="btn-ghost" onclick="openModal('modal-add')">
+          <svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add item
+        </button>
+        <button class="btn-ghost" onclick="openDeleteItem()">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+          Delete item
+        </button>
+        <button class="btn-primary" onclick="openModal('modal-pdf')">
+          <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          PDF
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+      <div id="tt-empty" class="empty-tt" style="display:none;">
+        <svg viewBox="0 0 24 24" style="width:40px;height:40px;stroke:var(--text-3);fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        No timetables yet — click "+ New" to create one
+      </div>
+      <div class="tt-wrap" id="tt-wrap" style="display:none;">
+        <table class="tt-table" id="tt-table"></table>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD / EDIT ITEM MODAL -->
+<div class="modal-backdrop" id="modal-add" style="display:none;">
+  <div class="modal" style="width:520px;max-height:90vh;">
+    <div class="modal-title" id="modal-add-title">Add item</div>
+    <input type="hidden" id="item-id" />
+
+    <div class="type-tabs">
+      <button class="type-tab active" id="tab-course" onclick="setItemType('course')">Course</button>
+      <button class="type-tab" id="tab-event" onclick="setItemType('event')">Event</button>
+    </div>
+
+    <div class="form-field">
+      <label class="form-label" id="item-title-label">Course title *</label>
+      <input class="form-input" id="item-title" placeholder="e.g. IAS353" />
+    </div>
+
+    <div class="colour-row">
+      <label class="form-label" style="margin:0;min-width:50px;">Colour</label>
+      <div class="colour-preview" id="colour-preview" style="background:#58a6ff;"></div>
+      <div class="colour-picker" id="item-colour-picker"></div>
+      <input type="hidden" id="item-colour" value="#58a6ff" />
+    </div>
+
+    <div id="course-fields">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-field">
+          <label class="form-label">Course type (optional)</label>
+          <input class="form-input" id="item-course-type" placeholder="e.g. Lecture" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">Instructor (optional)</label>
+          <input class="form-input" id="item-instructor" placeholder="optional" />
+        </div>
+      </div>
+    </div>
+
+    <div id="meeting-times-container"></div>
+    <button class="add-meeting-btn" onclick="addMeetingCard()">+ Add another meeting time</button>
+
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-add')">Cancel</button>
+      <button class="btn-primary" id="modal-add-btn" onclick="saveItem()">Add item</button>
+    </div>
+  </div>
+</div>
+
+<!-- DELETE ITEM LIST MODAL -->
+<div class="modal-backdrop" id="modal-delete-item" style="display:none;">
+  <div class="modal" style="width:420px;">
+    <div class="modal-title">Delete item</div>
+    <div id="delete-item-list" style="display:flex;flex-direction:column;gap:6px;max-height:400px;overflow-y:auto;"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-delete-item')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF MODAL -->
+<div class="modal-backdrop" id="modal-pdf" style="display:none;">
+  <div class="modal" style="width:360px;">
+    <div class="modal-title">Export PDF</div>
+    <div class="form-field">
+      <label class="form-label">Colour mode</label>
+      <div class="pdf-mode-toggle">
+        <label class="pdf-mode-opt">
+          <input type="radio" name="pdf-mode" value="dark" checked /> Dark (screen)
+        </label>
+        <label class="pdf-mode-opt">
+          <input type="radio" name="pdf-mode" value="light" /> Light (print)
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-pdf')">Cancel</button>
+      <button class="btn-primary" onclick="exportPDF()">Download PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOUR SLIDER MODAL -->
+<div class="modal-backdrop" id="modal-hours" style="display:none;">
+  <div class="modal" style="width:420px;">
+    <div class="modal-title">Visible hour range</div>
+    <div class="slider-wrap">
+      <div class="slider-track" id="slider-track">
+        <div class="slider-range" id="slider-range"></div>
+        <div class="slider-handle" id="handle-start" onmousedown="startDrag('start',event)"></div>
+        <div class="slider-handle" id="handle-end" onmousedown="startDrag('end',event)"></div>
+      </div>
+      <div class="slider-labels">
+        <span id="slider-start-label">07:00</span>
+        <span id="slider-end-label">19:00</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-hours')">Cancel</button>
+      <button class="btn-primary" onclick="applyHourRange()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+const DAYS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const DAYS_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+let timetables = [];
+let currentTT = null;
+let items = [];
+let me = null;
+let branches = [];
+let startHour = 7, endHour = 19;
+let sliderStart = 7, sliderEnd = 19;
+let dragging = null;
+const SLIDER_MAX = 24;
+let currentItemType = 'course';
+let meetingCount = 0;
+let editingItemId = null;
+
+async function init() {
+  me = await requireLogin();
+  if (!me) return;
+  branches = await GET('branches').catch(() => []);
+  buildSidebar('timetable', me, branches);
+  buildColourPickerInModal();
+  timetables = await GET('timetables').catch(() => []);
+  renderTTSelect();
+  if (timetables.length) {
+    currentTT = timetables[0];
+    document.getElementById('tt-select').value = currentTT.id;
+    await loadItems();
+  } else {
+    showEmpty(true);
+  }
+}
+
+function renderTTSelect() {
+  const sel = document.getElementById('tt-select');
+  sel.innerHTML = timetables.map(t => `<option value="${t.id}">${escHtml(t.title)}</option>`).join('');
+  document.getElementById('tt-delete-btn').style.display = timetables.length ? 'inline-flex' : 'none';
+}
+
+async function switchTimetable() {
+  const id = document.getElementById('tt-select').value;
+  currentTT = timetables.find(t => t.id === id);
+  await loadItems();
+}
+
+async function newTimetable() {
+  const title = prompt('Timetable name:') || 'New Timetable';
+  try {
+    const t = await POST('timetables', { title });
+    timetables.push(t);
+    currentTT = t;
+    renderTTSelect();
+    document.getElementById('tt-select').value = t.id;
+    items = [];
+    showEmpty(false);
+    renderGrid();
+    toast('Timetable created', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteTimetable() {
+  if (!currentTT || !confirm(`Delete "${currentTT.title}"? This cannot be undone.`)) return;
+  try {
+    await DELETE('timetables', { id: currentTT.id });
+    timetables = timetables.filter(t => t.id !== currentTT.id);
+    currentTT = timetables[0] || null;
+    renderTTSelect();
+    if (currentTT) {
+      document.getElementById('tt-select').value = currentTT.id;
+      await loadItems();
+    } else {
+      items = [];
+      showEmpty(true);
+    }
+    toast('Timetable deleted', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function loadItems() {
+  if (!currentTT) return;
+  items = await GET('timetables', { type: 'items', timetable_id: currentTT.id }).catch(() => []);
+  showEmpty(false);
+  renderGrid();
+}
+
+function showEmpty(empty) {
+  document.getElementById('tt-empty').style.display = empty ? 'flex' : 'none';
+  document.getElementById('tt-wrap').style.display = empty ? 'none' : 'block';
+}
+
+// ── GRID ──────────────────────────────────────────────────────
+function renderGrid() {
+  const table = document.getElementById('tt-table');
+  const slots = generateSlots(startHour, endHour);
+
+  // Header row
+  let html = '<thead><tr><th class="tt-corner"></th>';
+  for (const day of DAYS) html += `<th class="tt-col-head">${day}</th>`;
+  html += '</tr></thead><tbody>';
+
+  // Body rows — one per 30-min slot
+  for (let si = 0; si < slots.length; si++) {
+    const slot = slots[si];
+    const isHour = slot.endsWith(':00');
+    html += `<tr>`;
+    html += `<td class="tt-time-cell ${isHour ? 'hour' : ''}">${isHour ? slot : ''}</td>`;
+    for (let di = 0; di < 7; di++) {
+      html += `<td class="tt-cell" data-day="${DAYS_KEYS[di]}" data-slot="${slot}" id="cell-${DAYS_KEYS[di]}-${si}"></td>`;
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+
+  // Now inject item blocks
+  const ROW_H = 28; // matches height in CSS
+  for (const item of items) {
+    for (const slot of (item.timetable_slots || [])) {
+      for (const day of slot.days) {
+        const startSlot = (slot.start_time || '').slice(0,5);
+        const endSlot   = (slot.end_time   || '').slice(0,5);
+        const startIdx  = slots.indexOf(startSlot);
+        if (startIdx === -1) continue;
+
+        // Calculate height in rows
+        const [sh, sm] = startSlot.split(':').map(Number);
+        const [eh, em] = endSlot.split(':').map(Number);
+        const durationMins = (eh * 60 + em) - (sh * 60 + sm);
+        const rows = durationMins / 30;
+
+        const cell = document.getElementById(`cell-${day}-${startIdx}`);
+        if (!cell) continue;
+
+        const colour = item.colour || '#58a6ff';
+        const bg = colourBg(colour, 0.25);
+        const typeLabel = item.item_type === 'course'
+          ? [item.course_type, startSlot + '–' + endSlot, slot.location || item.location].filter(Boolean).join('\n')
+          : [startSlot + '–' + endSlot, slot.location].filter(Boolean).join('\n');
+
+        const block = document.createElement('div');
+        block.className = 'tt-block';
+        block.style.cssText = `background:${bg};color:${colour};border:1px solid ${colour};top:1px;height:${ROW_H * rows - 3}px;`;
+        block.innerHTML = `
+          <div class="tt-block-title">${escHtml(item.title)}${item.course_type ? ' ' + escHtml(item.course_type) : ''}</div>
+          <div class="tt-block-time">${startSlot}–${endSlot}</div>
+          ${(slot.location || item.location) ? `<div class="tt-block-loc">${escHtml(slot.location || item.location)}</div>` : ''}
+        `;
+        block.onclick = (e) => { e.stopPropagation(); openEditItem(item.id); };
+        cell.style.position = 'relative';
+        cell.appendChild(block);
+      }
+    }
+  }
+
+  document.getElementById('hour-pill').textContent =
+    String(startHour).padStart(2,'0') + ':00 – ' + String(endHour).padStart(2,'0') + ':00';
+}
+
+// ── COLOUR PICKER ─────────────────────────────────────────────
+function buildColourPickerInModal() {
+  const picker = document.getElementById('item-colour-picker');
+  picker.innerHTML = '';
+  PALETTE.forEach(c => {
+    const sw = document.createElement('div');
+    sw.className = 'colour-swatch' + (c === '#58a6ff' ? ' active' : '');
+    sw.style.background = c;
+    sw.onclick = () => {
+      picker.querySelectorAll('.colour-swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      document.getElementById('item-colour').value = c;
+      document.getElementById('colour-preview').style.background = c;
+    };
+    picker.appendChild(sw);
+  });
+}
+
+function setColour(c) {
+  document.getElementById('item-colour').value = c;
+  document.getElementById('colour-preview').style.background = c;
+  document.querySelectorAll('#item-colour-picker .colour-swatch').forEach(s => {
+    s.classList.toggle('active', s.style.background === c || rgbToHex(s.style.background) === c);
+  });
+}
+
+function rgbToHex(rgb) {
+  const m = rgb.match(/\d+/g);
+  if (!m) return rgb;
+  return '#' + m.slice(0,3).map(x => parseInt(x).toString(16).padStart(2,'0')).join('');
+}
+
+// ── ITEM TYPE ─────────────────────────────────────────────────
+function setItemType(type) {
+  currentItemType = type;
+  document.getElementById('tab-course').classList.toggle('active', type === 'course');
+  document.getElementById('tab-event').classList.toggle('active', type === 'event');
+  document.getElementById('item-title-label').textContent = type === 'course' ? 'Course title *' : 'Event name *';
+  document.getElementById('course-fields').style.display = type === 'course' ? 'block' : 'none';
+}
+
+// ── MEETING CARDS ─────────────────────────────────────────────
+function addMeetingCard(data = {}) {
+  meetingCount++;
+  const id = 'meeting-' + meetingCount;
+  const container = document.getElementById('meeting-times-container');
+  const card = document.createElement('div');
+  card.className = 'meeting-card';
+  card.id = id;
+
+  const dayChecks = DAYS.map((d, i) => {
+    const key = DAYS_KEYS[i];
+    const checked = data.days?.includes(key) ? 'checked' : '';
+    return `<label class="day-check-label">
+      <input type="checkbox" name="${id}-day" value="${key}" ${checked} />
+      ${d}
+    </label>`;
+  }).join('');
+
+  const startTime = (data.start_time || '08:00').slice(0,5);
+  const endTime   = (data.end_time   || '09:00').slice(0,5);
+  const location  = data.location || '';
+
+  card.innerHTML = `
+    <div class="meeting-card-header">
+      <span>Meeting time ${meetingCount}</span>
+      <button class="meeting-remove" onclick="removeMeetingCard('${id}')">×</button>
+    </div>
+    <div class="day-checks">${dayChecks}</div>
+    <div class="time-row">
+      <span>Start</span>
+      <input class="time-input" type="time" name="${id}-start" value="${startTime}" step="1800" />
+    </div>
+    <div class="time-row">
+      <span>End</span>
+      <input class="time-input" type="time" name="${id}-end" value="${endTime}" step="1800" />
+    </div>
+    <div class="form-field" style="margin-top:6px;margin-bottom:0;">
+      <label class="form-label">Location (optional)</label>
+      <input class="form-input" name="${id}-location" placeholder="optional" value="${escHtml(location)}" />
+    </div>
+  `;
+  container.appendChild(card);
+}
+
+function removeMeetingCard(id) {
+  document.getElementById(id)?.remove();
+}
+
+function getMeetingData() {
+  const cards = document.querySelectorAll('#meeting-times-container .meeting-card');
+  return Array.from(cards).map(card => {
+    const id = card.id;
+    const days = Array.from(card.querySelectorAll(`input[name="${id}-day"]:checked`)).map(i => i.value);
+    const start = card.querySelector(`input[name="${id}-start"]`)?.value || '08:00';
+    const end   = card.querySelector(`input[name="${id}-end"]`)?.value   || '09:00';
+    const loc   = card.querySelector(`input[name="${id}-location"]`)?.value.trim() || null;
+    return { days, start_time: start + ':00', end_time: end + ':00', location: loc };
+  }).filter(s => s.days.length > 0);
+}
+
+// ── OPEN ADD MODAL ────────────────────────────────────────────
+function openAddModal() {
+  editingItemId = null;
+  meetingCount = 0;
+  document.getElementById('modal-add-title').textContent = 'Add item';
+  document.getElementById('modal-add-btn').textContent = 'Add item';
+  document.getElementById('item-id').value = '';
+  document.getElementById('item-title').value = '';
+  document.getElementById('item-course-type').value = '';
+  document.getElementById('item-instructor').value = '';
+  document.getElementById('meeting-times-container').innerHTML = '';
+  setItemType('course');
+  setColour('#58a6ff');
+  addMeetingCard();
+  openModal('modal-add');
+}
+
+function openEditItem(id) {
+  const item = items.find(i => i.id === id);
+  if (!item) return;
+  editingItemId = id;
+  meetingCount = 0;
+
+  document.getElementById('modal-add-title').textContent = 'Edit item';
+  document.getElementById('modal-add-btn').textContent = 'Save changes';
+  document.getElementById('item-id').value = id;
+  document.getElementById('item-title').value = item.title;
+  document.getElementById('item-course-type').value = item.course_type || '';
+  document.getElementById('item-instructor').value = item.instructor || '';
+  document.getElementById('meeting-times-container').innerHTML = '';
+  setItemType(item.item_type || 'course');
+  setColour(item.colour || '#58a6ff');
+
+  const slots = item.timetable_slots || [];
+  if (slots.length) {
+    slots.forEach(s => addMeetingCard({
+      days: s.days,
+      start_time: (s.start_time || '').slice(0,5),
+      end_time:   (s.end_time   || '').slice(0,5),
+      location:   s.location || ''
+    }));
+  } else {
+    addMeetingCard();
+  }
+  openModal('modal-add');
+}
+
+async function saveItem() {
+  if (!currentTT) return;
+  const title = document.getElementById('item-title').value.trim();
+  if (!title) { toast('Title required', 'error'); return; }
+
+  const colour     = document.getElementById('item-colour').value;
+  const courseType = document.getElementById('item-course-type').value.trim();
+  const instructor = document.getElementById('item-instructor').value.trim();
+  const slots      = getMeetingData();
+
+  if (!slots.length) { toast('Add at least one meeting time with a day selected', 'error'); return; }
+
+  const body = {
+    item_type:   currentItemType,
+    title,
+    colour,
+    course_type: courseType || null,
+    instructor:  instructor || null,
+    slots
+  };
+
+  try {
+    if (editingItemId) {
+      const updated = await PATCH('timetables?type=items', { id: editingItemId, ...body });
+      items = items.map(i => i.id === editingItemId ? updated : i);
+      toast('Item updated', 'success');
+    } else {
+      body.timetable_id = currentTT.id;
+      const created = await POST('timetables?type=items', body);
+      items.push(created);
+      toast('Item added', 'success');
+    }
+    closeModal('modal-add');
+    renderGrid();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── DELETE ITEM ───────────────────────────────────────────────
+function openDeleteItem() {
+  const list = document.getElementById('delete-item-list');
+  if (!items.length) {
+    list.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:8px;">No items to delete.</div>';
+  } else {
+    list.innerHTML = items.map(item => {
+      const colour = item.colour || '#58a6ff';
+      const bg = colourBg(colour, 0.2);
+      return `<button onclick="confirmDeleteItem('${item.id}')"
+        style="width:100%;background:${bg};color:${colour};border:1px solid ${colour};border-radius:6px;padding:10px 14px;text-align:left;font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer;">
+        ${escHtml(item.title)}
+      </button>`;
+    }).join('');
+  }
+  openModal('modal-delete-item');
+}
+
+async function confirmDeleteItem(id) {
+  const item = items.find(i => i.id === id);
+  if (!item || !confirm(`Delete "${item.title}"?`)) return;
+  try {
+    await DELETE('timetables?type=items', { id });
+    items = items.filter(i => i.id !== id);
+    closeModal('modal-delete-item');
+    renderGrid();
+    toast('Item deleted', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── PDF EXPORT ────────────────────────────────────────────────
+function exportPDF() {
+  const mode = document.querySelector('input[name="pdf-mode"]:checked')?.value || 'dark';
+  const dark  = mode === 'dark';
+  const bg    = dark ? '#0d1117' : '#ffffff';
+  const surf  = dark ? '#161b22' : '#f8f9fa';
+  const surf2 = dark ? '#21262d' : '#e9ecef';
+  const border = dark ? '#30363d' : '#dee2e6';
+  const text  = dark ? '#e6edf3' : '#111111';
+  const text2 = dark ? '#8b949e' : '#555555';
+
+  const slots = generateSlots(startHour, endHour);
+  const ROW_H = 24;
+
+  let colHeaders = DAYS.map(d => `<th style="background:${surf2};color:${text2};padding:6px 4px;text-align:center;border:1px solid ${border};font-size:11px;min-width:110px;width:110px;">${d}</th>`).join('');
+
+  let bodyRows = '';
+  for (let si = 0; si < slots.length; si++) {
+    const slot = slots[si];
+    const isHour = slot.endsWith(':00');
+    bodyRows += `<tr>
+      <td style="background:${surf2};color:${isHour ? text2 : 'transparent'};font-size:10px;padding:0 4px;border:1px solid ${border};white-space:nowrap;width:52px;vertical-align:top;padding-top:3px;">${slot}</td>
+      ${DAYS_KEYS.map(day => `<td style="border:1px solid ${border};height:${ROW_H}px;width:110px;position:relative;vertical-align:top;" id="pdf-cell-${day}-${si}"></td>`).join('')}
+    </tr>`;
+  }
+
+  let blockStyles = '';
+  for (const item of items) {
+    for (const slot of (item.timetable_slots || [])) {
+      for (const day of slot.days) {
+        const startSlot = (slot.start_time || '').slice(0,5);
+        const endSlot   = (slot.end_time   || '').slice(0,5);
+        const si = slots.indexOf(startSlot);
+        if (si === -1) continue;
+        const [sh, sm] = startSlot.split(':').map(Number);
+        const [eh, em] = endSlot.split(':').map(Number);
+        const durationMins = (eh * 60 + em) - (sh * 60 + sm);
+        const rows = durationMins / 30;
+        const colour = item.colour || '#58a6ff';
+        const bgBlock = colourBg(colour, dark ? 0.3 : 0.2);
+        const h = ROW_H * rows - 3;
+        blockStyles += `#pdf-cell-${day}-${si} { background: ${bgBlock}; }`;
+        blockStyles += `
+          .pdf-block-${item.id.slice(0,8)}-${day}-${si} {
+            position:absolute;top:1px;left:2px;right:2px;height:${h}px;
+            background:${bgBlock};color:${colour};border:1px solid ${colour};
+            border-radius:4px;padding:2px 4px;font-size:9px;font-weight:700;
+            overflow:hidden;z-index:1;
+          }
+        `;
+      }
+    }
+  }
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8">
+  <title>${escHtml(currentTT?.title || 'Timetable')}</title>
+  <style>
+    body { margin:0; padding:20px; background:${bg}; font-family:Arial,sans-serif; font-size:12px; color:${text}; }
+    h2 { text-align:center; margin-bottom:16px; font-size:16px; color:${text}; }
+    table { border-collapse:collapse; width:100%; }
+    ${blockStyles}
+    @media print { body { padding:0; } }
+  </style>
+  </head><body>
+  <h2>${escHtml(currentTT?.title || 'Timetable')}</h2>
+  <table>
+    <thead><tr>
+      <th style="background:${surf2};border:1px solid ${border};width:52px;"></th>
+      ${colHeaders}
+    </tr></thead>
+    <tbody>${bodyRows}</tbody>
+  </table>
+  <script>
+    // Inject blocks after DOM ready
+    const items = ${JSON.stringify(items)};
+    const slots = ${JSON.stringify(slots)};
+    const DAYS_KEYS = ${JSON.stringify(DAYS_KEYS)};
+    const ROW_H = ${ROW_H};
+    function colourBg(hex, a) {
+      const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);
+      return 'rgba('+r+','+g+','+b+','+a+')';
+    }
+    for (const item of items) {
+      for (const slot of (item.timetable_slots||[])) {
+        for (const day of slot.days) {
+          const startSlot=(slot.start_time||'').slice(0,5);
+          const endSlot=(slot.end_time||'').slice(0,5);
+          const si=slots.indexOf(startSlot);
+          if(si===-1)continue;
+          const [sh,sm]=startSlot.split(':').map(Number);
+          const [eh,em]=endSlot.split(':').map(Number);
+          const rows=((eh*60+em)-(sh*60+sm))/30;
+          const cell=document.getElementById('pdf-cell-'+day+'-'+si);
+          if(!cell)continue;
+          cell.style.position='relative';
+          const colour=item.colour||'#58a6ff';
+          const bgBlock=colourBg(colour,${dark?0.3:0.2});
+          const div=document.createElement('div');
+          div.style.cssText='position:absolute;top:1px;left:2px;right:2px;height:'+(ROW_H*rows-3)+'px;background:'+bgBlock+';color:'+colour+';border:1px solid '+colour+';border-radius:4px;padding:2px 4px;font-size:9px;font-weight:700;overflow:hidden;z-index:1;';
+          div.innerHTML='<div>'+item.title+(item.course_type?' '+item.course_type:'')+'</div><div style="font-size:8px;opacity:.8;">'+startSlot+'–'+endSlot+'</div>'+(slot.location||item.location?'<div style="font-size:8px;opacity:.7;">'+(slot.location||item.location)+'</div>':'');
+          cell.appendChild(div);
+        }
+      }
+    }
+    window.onload=()=>window.print();
+  <\/script>
+  </body></html>`;
+
+  closeModal('modal-pdf');
+  const blob = new Blob([html], { type: 'text/html' });
+  window.open(URL.createObjectURL(blob), '_blank');
+}
+
+// ── HOUR SLIDER ───────────────────────────────────────────────
+function openHourSlider() {
+  sliderStart = startHour; sliderEnd = endHour;
+  updateSliderUI(); openModal('modal-hours');
+}
+function updateSliderUI() {
+  const ps = (sliderStart/SLIDER_MAX)*100, pe = (sliderEnd/SLIDER_MAX)*100;
+  document.getElementById('handle-start').style.left = ps+'%';
+  document.getElementById('handle-end').style.left = pe+'%';
+  document.getElementById('slider-range').style.left = ps+'%';
+  document.getElementById('slider-range').style.width = (pe-ps)+'%';
+  document.getElementById('slider-start-label').textContent = String(sliderStart).padStart(2,'0')+':00';
+  document.getElementById('slider-end-label').textContent = String(sliderEnd).padStart(2,'0')+':00';
+}
+function startDrag(which, e) {
+  e.preventDefault(); dragging = which;
+  document.addEventListener('mousemove', onDragSlider);
+  document.addEventListener('mouseup', stopDrag);
+}
+function onDragSlider(e) {
+  if (!dragging) return;
+  const track = document.getElementById('slider-track');
+  const rect = track.getBoundingClientRect();
+  let pct = Math.max(0, Math.min(1, (e.clientX-rect.left)/rect.width));
+  let hour = Math.round(pct*SLIDER_MAX);
+  if (dragging==='start') sliderStart = Math.max(0, Math.min(hour, sliderEnd-1));
+  else sliderEnd = Math.min(24, Math.max(hour, sliderStart+1));
+  updateSliderUI();
+}
+function stopDrag() {
+  dragging = null;
+  document.removeEventListener('mousemove', onDragSlider);
+  document.removeEventListener('mouseup', stopDrag);
+}
+function applyHourRange() {
+  startHour = sliderStart; endHour = sliderEnd;
+  closeModal('modal-hours'); renderGrid();
+}
+
+// Override the modal-add open button to use our function
+document.querySelector('.btn-ghost[onclick="openModal(\'modal-add\')"]')
+  ?.setAttribute('onclick', 'openAddModal()');
+
+function escHtml(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>
