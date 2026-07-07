@@ -71,6 +71,10 @@ function buildSidebar(activePage, me, branches = []) {
         <svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
         Finance
       </a>
+      <a class="nav-item ${activePage === 'flowchart' ? 'active' : ''}" href="/flowchart">
+        <svg viewBox="0 0 24 24"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+        Flowcharts
+      </a>
 
       <div class="nav-section-label" style="margin-top:8px;">Branches</div>
       ${branchItems}
