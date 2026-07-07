@@ -27,17 +27,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function parseCookies(header) {
-  const out = {};
-  (header || '').split(';').forEach((part) => {
-    const i = part.indexOf('=');
-    if (i > -1) out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
-  });
-  return out;
-}
-
 function getUserId(req) {
-  const token = parseCookies(req.headers.cookie)[COOKIE_NAME];
+  const token = cookie.parse(req.headers.cookie || '')[COOKIE_NAME];
   if (!token) return null;
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
@@ -135,4 +126,4 @@ export default async function handler(req, res) {
     console.error('flowcharts api error:', err);
     return res.status(500).json({ error: 'Server error' });
   }
-};
+}
