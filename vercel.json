@@ -8,7 +8,6 @@
     { "source": "/admin", "destination": "/admin.html" },
     { "source": "/timetable", "destination": "/timetable.html" },
     { "source": "/uni", "destination": "/uni.html" },
-    { "source": "/finance", "destination": "/finance.html" },
-    { "source": "/flowchart", "destination": "/flowchart.html" }
+    { "source": "/finance", "destination": "/finance.html" }
   ]
 }
