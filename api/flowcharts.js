@@ -16,8 +16,9 @@
 // 4. SUPABASE ENVS: assumed SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
 // ──────────────────────────────────────────────────────────────────────────────
 
-const { createClient } = require('@supabase/supabase-js');
-const jwt = require('jsonwebtoken');
+import { createClient } from '@supabase/supabase-js';
+import jwt from 'jsonwebtoken';
+import cookie from 'cookie';
 
 const COOKIE_NAME = 'token';
 
