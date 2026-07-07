@@ -32,7 +32,7 @@ function getUserId(req) {
   if (!token) return null;
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    return payload.id || payload.userId || payload.sub || null;
+    return payload.user_id || null;
   } catch {
     return null;
   }
