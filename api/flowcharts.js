@@ -1,26 +1,27 @@
-// api/flowcharts.js
-// Consolidated CRUD for flowcharts — one serverless function, switched on HTTP method.
+// api/flowcharts.js — CRUD for flowcharts + folders (Notes app)
 //
-// GET    /api/flowcharts          -> list (id, name, updated_at) for the signed-in user
-// GET    /api/flowcharts?id=...   -> single chart incl. data blob
-// POST   /api/flowcharts          -> create { name? }         -> returns row
-// PUT    /api/flowcharts          -> update { id, name?, data? }
-// DELETE /api/flowcharts?id=...   -> delete
+// Flowcharts:
+//   GET    /api/flowcharts                    -> list (id, name, updated_at, folder_id)
+//   GET    /api/flowcharts?id=...             -> single chart incl. data blob
+//   POST   /api/flowcharts                    -> create { name?, folder_id? }
+//   PUT    /api/flowcharts                    -> update { id, name?, data?, folder_id? }
+//   DELETE /api/flowcharts?id=...             -> delete
 //
-// ── ALIGNMENT NOTES (check against your existing api/*.js files) ──────────────
-// 1. COOKIE NAME: assumed 'token'. If your auth cookie is named differently
-//    (e.g. 'session', 'auth'), change COOKIE_NAME below.
-// 2. JWT SECRET:  assumed process.env.JWT_SECRET.
-// 3. USER ID:     assumed the JWT payload carries the user id at .id
-//    (falls back to .userId / .sub). Align with how your other endpoints read it.
-// 4. SUPABASE ENVS: assumed SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY.
-// ──────────────────────────────────────────────────────────────────────────────
+// Folders (resource=folders):
+//   GET    /api/flowcharts?resource=folders           -> list folders
+//   POST   /api/flowcharts?resource=folders           -> create { name? }
+//   PUT    /api/flowcharts?resource=folders           -> rename { id, name }
+//   DELETE /api/flowcharts?resource=folders&id=...&mode=folder|contents
+//            mode=folder   -> delete folder only, charts become uncategorised (default)
+//            mode=contents -> delete folder AND all charts inside it
+//
+// Env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET
 
 import { createClient } from '@supabase/supabase-js';
 import jwt from 'jsonwebtoken';
 import cookie from 'cookie';
 
-const COOKIE_NAME = 'token';
+const COOKIE_NAME = 'nt_token';
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -42,39 +43,103 @@ export default async function handler(req, res) {
   const userId = getUserId(req);
   if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-  const uid = String(userId);
+  const resource = req.query && req.query.resource;
 
   try {
+    // ── FOLDERS ───────────────────────────────────────────────────────────────
+    if (resource === 'folders') {
+      switch (req.method) {
+        case 'GET': {
+          const { data, error } = await supabase
+            .from('notes_folders')
+            .select('id, name, created_at')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: true });
+          if (error) throw error;
+          return res.status(200).json(data);
+        }
+        case 'POST': {
+          const { name } = req.body || {};
+          const { data, error } = await supabase
+            .from('notes_folders')
+            .insert({ user_id: userId, name: (name && String(name).trim()) || 'New folder' })
+            .select()
+            .single();
+          if (error) throw error;
+          return res.status(201).json(data);
+        }
+        case 'PUT': {
+          const { id, name } = req.body || {};
+          if (!id) return res.status(400).json({ error: 'id required' });
+          const { data, error } = await supabase
+            .from('notes_folders')
+            .update({ name: String(name || '').trim() || 'New folder' })
+            .eq('id', id)
+            .eq('user_id', userId)
+            .select()
+            .single();
+          if (error || !data) return res.status(404).json({ error: 'Not found' });
+          return res.status(200).json(data);
+        }
+        case 'DELETE': {
+          const { id, mode } = req.query;
+          if (!id) return res.status(400).json({ error: 'id required' });
+          if (mode === 'contents') {
+            // delete charts inside first
+            const { error: cErr } = await supabase
+              .from('notes_flowcharts')
+              .delete()
+              .eq('folder_id', id)
+              .eq('user_id', userId);
+            if (cErr) throw cErr;
+          }
+          // (default) folder-only: FK on delete set null uncategorises charts automatically
+          const { error } = await supabase
+            .from('notes_folders')
+            .delete()
+            .eq('id', id)
+            .eq('user_id', userId);
+          if (error) throw error;
+          return res.status(200).json({ ok: true });
+        }
+        default:
+          res.setHeader('Allow', 'GET, POST, PUT, DELETE');
+          return res.status(405).json({ error: 'Method not allowed' });
+      }
+    }
+
+    // ── FLOWCHARTS ────────────────────────────────────────────────────────────
     switch (req.method) {
       case 'GET': {
         const { id } = req.query;
         if (id) {
           const { data, error } = await supabase
-            .from('flowcharts')
+            .from('notes_flowcharts')
             .select('*')
             .eq('id', id)
-            .eq('user_id', uid)
+            .eq('user_id', userId)
             .single();
           if (error || !data) return res.status(404).json({ error: 'Not found' });
           return res.status(200).json(data);
         }
         const { data, error } = await supabase
-          .from('flowcharts')
-          .select('id, name, updated_at')
-          .eq('user_id', uid)
+          .from('notes_flowcharts')
+          .select('id, name, updated_at, folder_id')
+          .eq('user_id', userId)
           .order('updated_at', { ascending: false });
         if (error) throw error;
         return res.status(200).json(data);
       }
 
       case 'POST': {
-        const { name } = req.body || {};
+        const { name, folder_id } = req.body || {};
         const { data, error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .insert({
-            user_id: uid,
+            user_id: userId,
             name: (name && String(name).trim()) || 'Untitled chart',
-            data: { nodes: [], edges: [] },
+            data: { nodes: [], edges: [], types: [] },
+            folder_id: folder_id || null,
           })
           .select()
           .single();
@@ -83,7 +148,7 @@ export default async function handler(req, res) {
       }
 
       case 'PUT': {
-        const { id, name, data: graph } = req.body || {};
+        const { id, name, data: graph, folder_id } = req.body || {};
         if (!id) return res.status(400).json({ error: 'id required' });
 
         const patch = { updated_at: new Date().toISOString() };
@@ -94,13 +159,17 @@ export default async function handler(req, res) {
           }
           patch.data = graph;
         }
+        // folder_id: allow explicit null (uncategorise) — only touch if key present
+        if (Object.prototype.hasOwnProperty.call(req.body, 'folder_id')) {
+          patch.folder_id = folder_id || null;
+        }
 
         const { data, error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .update(patch)
           .eq('id', id)
-          .eq('user_id', uid)
-          .select('id, name, updated_at')
+          .eq('user_id', userId)
+          .select('id, name, updated_at, folder_id')
           .single();
         if (error || !data) return res.status(404).json({ error: 'Not found' });
         return res.status(200).json(data);
@@ -110,10 +179,10 @@ export default async function handler(req, res) {
         const { id } = req.query;
         if (!id) return res.status(400).json({ error: 'id required' });
         const { error } = await supabase
-          .from('flowcharts')
+          .from('notes_flowcharts')
           .delete()
           .eq('id', id)
-          .eq('user_id', uid);
+          .eq('user_id', userId);
         if (error) throw error;
         return res.status(200).json({ ok: true });
       }
