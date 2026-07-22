@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Timesheet — Productivity Tracker</title>
+<link rel="stylesheet" href="/app.css" />
+<style>
+  .cal-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
+  .view-tabs { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px; gap: 2px; }
+  .view-tab { padding: 4px 14px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-2); border: none; background: none; font-family: var(--font); transition: background 0.1s, color 0.1s; }
+  .view-tab.active { background: var(--surface-3); color: var(--text); }
+  .cal-nav { display: flex; align-items: center; gap: 8px; }
+  .cal-nav-btn { background: none; border: 1px solid var(--border); border-radius: var(--radius); color: var(--text-2); width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+  .cal-nav-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .cal-nav-btn:hover { border-color: var(--border-2); color: var(--text); }
+  .cal-date-label { font-size: 14px; font-weight: 600; color: var(--text); min-width: 200px; text-align: center; }
+
+  /* HOUR RANGE PILL */
+  .hour-pill {
+    border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 4px 12px; font-size: 12px; color: var(--text-2);
+    cursor: pointer; transition: border-color 0.1s, font-weight 0.1s, color 0.1s;
+    background: var(--surface-2);
+  }
+  .hour-pill:hover { border-color: var(--accent); font-weight: 600; color: var(--text); }
+
+  /* TRANSPOSED GRID: days = rows (Y), time = columns (X) */
+  .cal-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: auto; max-height: 600px; }
+  .cal-table { border-collapse: collapse; table-layout: fixed; }
+  .cal-table th, .cal-table td { border: 1px solid var(--border); }
+  .cal-corner { position: sticky; top:0; left:0; z-index: 3; background: var(--surface-2); width: 130px; min-width: 130px; }
+  .cal-col-head {
+    position: sticky; top: 0; z-index: 2; background: var(--surface-2);
+    font-size: 10px; font-weight: 500; color: var(--text-3);
+    padding: 6px 2px; text-align: center; width: 90px; min-width: 90px;
+  }
+  .cal-col-head.hour-mark { color: var(--text-2); font-weight: 600; }
+  .cal-row-head {
+    position: sticky; left: 0; z-index: 1; background: var(--surface-2);
+    font-size: 12px; font-weight: 600; color: var(--text-2);
+    padding: 6px 10px; white-space: nowrap; width: 130px; min-width: 130px;
+  }
+  .cal-row-head.today { color: var(--accent); }
+  .cal-row-head .misc-circles { display: flex; gap: 3px; margin-top: 4px; flex-wrap: wrap; }
+  .misc-circle {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--surface-3); border: 1px solid var(--border-2);
+    color: var(--text-2); font-size: 9px; font-weight: 600;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; flex-shrink: 0;
+  }
+  .misc-circle:hover { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+  .cal-cell { padding: 0; min-width: 90px; width: 90px; height: 32px; cursor: pointer; position: relative; transition: background 0.1s; user-select: none; }
+  .cal-cell:hover { background: var(--surface-2); }
+  .cal-cell.selecting { background: var(--accent-dim); }
+  .cal-entry {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: space-between;
+    gap: 4px; padding: 0 6px; font-size: 10px; font-weight: 600; overflow: hidden; cursor: pointer; position: relative;
+  }
+  .cal-entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+  .cal-entry-del {
+    opacity: 0; background: rgba(0,0,0,0.35); border: none; cursor: pointer;
+    color: #fff; font-size: 11px; line-height: 1; padding: 2px 5px; border-radius: 3px; flex-shrink: 0;
+  }
+  .cal-entry:hover .cal-entry-del { opacity: 1; }
+
+  /* MISC */
+  .misc-section { margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .misc-header { padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: 12px; font-weight: 600; color: var(--text-2); }
+  .misc-item { padding: 8px 14px; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .misc-item:last-child { border-bottom: none; }
+  .misc-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
+  .misc-del { margin-left: auto; background: none; border: none; cursor: pointer; color: var(--text-3); font-size: 16px; line-height: 1; }
+  .misc-del:hover { color: var(--danger); }
+  .misc-input-row { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+  .misc-input { flex: 1; }
+
+  .slot-info { font-size: 12px; color: var(--text-3); margin-bottom: 14px; }
+
+  /* HOUR RANGE SLIDER MODAL */
+  .slider-wrap { padding: 30px 10px 10px; }
+  .slider-track { position: relative; height: 6px; background: var(--surface-3); border-radius: 3px; margin: 0 8px; }
+  .slider-range { position: absolute; height: 100%; background: var(--accent); border-radius: 3px; }
+  .slider-handle {
+    position: absolute; top: 50%; width: 16px; height: 16px;
+    background: var(--accent); border: 2px solid var(--bg); border-radius: 50%;
+    transform: translate(-50%, -50%); cursor: grab; z-index: 2;
+  }
+  .slider-handle:active { cursor: grabbing; }
+  .slider-labels { display: flex; justify-content: space-between; margin-top: 12px; font-size: 12px; color: var(--text-2); }
+  .slider-ticks { display: flex; justify-content: space-between; margin-top: 4px; padding: 0 8px; }
+  .slider-tick { font-size: 9px; color: var(--text-3); }
+</style>
+</head>
+<body>
+<div class="app-layout">
+  <aside class="sidebar" id="sidebar"></aside>
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Timesheet</div>
+        <div class="topbar-sub" id="topbar-sub"></div>
+      </div>
+      <div class="topbar-actions">
+        <div class="hour-pill" id="hour-pill" onclick="openHourSlider()">08:00 – 20:00</div>
+      </div>
+    </div>
+
+    <div class="content">
+      <div class="cal-toolbar">
+        <div class="view-tabs">
+          <button class="view-tab active" onclick="setView('day',this)">Day</button>
+          <button class="view-tab" onclick="setView('week',this)">Week</button>
+          <button class="view-tab" onclick="setView('month',this)">Month</button>
+        </div>
+        <div class="cal-nav">
+          <button class="cal-nav-btn" onclick="navigate(-1)"><svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <span class="cal-date-label" id="cal-label"></span>
+          <button class="cal-nav-btn" onclick="navigate(1)"><svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg></button>
+        </div>
+        <button class="btn-ghost" onclick="goToday()">Today</button>
+      </div>
+
+      <div class="cal-wrap" id="cal-wrap">
+        <table class="cal-table" id="cal-table"></table>
+      </div>
+
+      <div class="misc-section" id="misc-section">
+        <div class="misc-header">Miscellaneous</div>
+        <div id="misc-list"></div>
+        <div class="misc-input-row">
+          <input class="form-input misc-input" id="misc-input" placeholder="Add a miscellaneous item…" />
+          <button class="btn-primary" onclick="addMisc()">Add</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- SLOT ASSIGNMENT MODAL -->
+<div class="modal-backdrop" id="modal-slot" style="display:none;">
+  <div class="modal">
+    <div class="modal-title">Assign task to slot</div>
+    <div class="slot-info" id="slot-info"></div>
+    <div class="form-field">
+      <label class="form-label">Task</label>
+      <div id="slot-task-select" style="border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto;background:var(--bg);"></div>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Note (optional)</label>
+      <input class="form-input" id="slot-note" placeholder="Quick note for this slot…" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-slot')">Cancel</button>
+      <button class="btn-primary" onclick="assignSlot()">Assign</button>
+    </div>
+  </div>
+</div>
+
+<!-- MISC ITEM POPUP -->
+<div class="modal-backdrop" id="modal-misc-view" style="display:none;">
+  <div class="modal" style="width:360px;">
+    <div class="modal-title">Miscellaneous item</div>
+    <div id="misc-view-date" class="slot-info"></div>
+    <div id="misc-view-desc" style="font-size:14px;color:var(--text);line-height:1.6;"></div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-misc-view')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- HOUR RANGE SLIDER MODAL -->
+<div class="modal-backdrop" id="modal-hours" style="display:none;">
+  <div class="modal" style="width:420px;">
+    <div class="modal-title">Visible hour range</div>
+    <div class="slider-wrap">
+      <div class="slider-track" id="slider-track">
+        <div class="slider-range" id="slider-range"></div>
+        <div class="slider-handle" id="handle-start" onmousedown="startDrag('start',event)"></div>
+        <div class="slider-handle" id="handle-end" onmousedown="startDrag('end',event)"></div>
+      </div>
+      <div class="slider-labels">
+        <span id="slider-start-label">08:00</span>
+        <span id="slider-end-label">20:00</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-hours')">Cancel</button>
+      <button class="btn-primary" onclick="applyHourRange()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+<script src="/sidebar.js"></script>
+<script>
+let currentView = 'day';
+let currentDate = new Date();
+let startHour = 8;
+let endHour = 20;
+let sliderStart = 8;
+let sliderEnd = 20;
+let tasks = [];
+let timeLogs = {};       // key: "date|slot_start" → log
+let miscByDate = {};     // key: date → [items]
+let selecting = false;
+let selectStart = null;
+let selectedSlots = [];
+let me = null;
+let branches = [];
+
+async function init() {
+  me = await requireLogin();
+  if (!me) return;
+  branches = await GET('branches').catch(() => []);
+  buildSidebar('calendar', me, branches);
+  tasks = await GET('tasks').catch(() => []);
+
+  // Load persisted hour range
+  const saved = localStorage.getItem('cal_hours_' + me.id);
+  if (saved) {
+    try {
+      const { s, e } = JSON.parse(saved);
+      if (s >= 0 && e <= 24 && s < e) { startHour = s; endHour = e; sliderStart = s; sliderEnd = e; }
+    } catch {}
+  }
+
+  await loadData();
+  render();
+}
+
+function getDateRange() {
+  if (currentView === 'day') {
+    const d = currentDate.toISOString().slice(0,10);
+    return { from: d, to: d };
+  }
+  if (currentView === 'week') {
+    const day = currentDate.getDay();
+    const mon = new Date(currentDate);
+    mon.setDate(currentDate.getDate() - (day === 0 ? 6 : day - 1));
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    return { from: mon.toISOString().slice(0,10), to: sun.toISOString().slice(0,10) };
+  }
+  const y = currentDate.getFullYear(), m = currentDate.getMonth();
+  const from = new Date(y, m, 1).toISOString().slice(0,10);
+  const to   = new Date(y, m+1, 0).toISOString().slice(0,10);
+  return { from, to };
+}
+
+function getDaysInRange() {
+  const { from, to } = getDateRange();
+  const days = [];
+  let d = new Date(from);
+  const end = new Date(to);
+  while (d <= end) { days.push(d.toISOString().slice(0,10)); d.setDate(d.getDate()+1); }
+  return days;
+}
+
+async function loadData() {
+  const { from, to } = getDateRange();
+  const logs = await GET('time-logs', { from, to }).catch(() => []);
+  timeLogs = {};
+  for (const log of logs) {
+    const slotKey = (log.slot_start || '').slice(0, 5);
+    timeLogs[log.log_date + '|' + slotKey] = log;
+  }
+
+  // Load misc for the whole visible range (used for circles in week/month, list in day)
+  miscByDate = {};
+  const miscItems = await GET('time-logs', { type: 'misc', from, to }).catch(() => []);
+  for (const item of miscItems) {
+    if (!miscByDate[item.log_date]) miscByDate[item.log_date] = [];
+    miscByDate[item.log_date].push(item);
+  }
+  if (currentView === 'day') renderMisc();
+}
+
+function render() {
+  updateLabel();
+  renderGrid();
+}
+
+function updateLabel() {
+  const opts = { year:'numeric', month:'long', day:'numeric' };
+  const wOpts = { year:'numeric', month:'short', day:'numeric' };
+  if (currentView === 'day') {
+    document.getElementById('cal-label').textContent = currentDate.toLocaleDateString('en-ZA', opts);
+    document.getElementById('topbar-sub').textContent = 'Day view';
+  } else if (currentView === 'week') {
+    const { from, to } = getDateRange();
+    document.getElementById('cal-label').textContent =
+      new Date(from).toLocaleDateString('en-ZA', wOpts) + ' – ' + new Date(to).toLocaleDateString('en-ZA', wOpts);
+    document.getElementById('topbar-sub').textContent = 'Week view';
+  } else {
+    document.getElementById('cal-label').textContent = currentDate.toLocaleDateString('en-ZA', { year:'numeric', month:'long' });
+    document.getElementById('topbar-sub').textContent = 'Month view';
+  }
+  document.getElementById('hour-pill').textContent =
+    String(startHour).padStart(2,'0') + ':00 – ' + String(endHour).padStart(2,'0') + ':00';
+}
+
+function renderGrid() {
+  const days = getDaysInRange();
+  const slots = generateSlots(startHour, endHour);
+  const todayStr = today();
+  const table = document.getElementById('cal-table');
+
+  let html = '<thead><tr><th class="cal-corner"></th>';
+  for (const slot of slots) {
+    const isHour = slot.endsWith(':00');
+    html += `<th class="cal-col-head ${isHour ? 'hour-mark' : ''}">${isHour ? slot : ''}</th>`;
+  }
+  html += '</tr></thead><tbody>';
+
+  for (const d of days) {
+    const dt = new Date(d);
+    const label = dt.toLocaleDateString('en-ZA', { weekday: 'short', day: 'numeric', month: currentView === 'month' ? 'short' : undefined });
+    const isToday = d === todayStr;
+    const miscItems = miscByDate[d] || [];
+    const miscCircles = currentView !== 'day' && miscItems.length
+      ? `<div class="misc-circles">${miscItems.map((m,i) => `<span class="misc-circle" onclick="viewMisc('${d}',${i})" title="${escHtml(m.description)}">${i+1}</span>`).join('')}</div>`
+      : '';
+
+    html += `<tr><td class="cal-row-head ${isToday ? 'today' : ''}">${label}${miscCircles}</td>`;
+    for (const slot of slots) {
+      const key = d + '|' + slot;
+      const log = timeLogs[key];
+      html += `<td class="cal-cell" data-date="${d}" data-slot="${slot}"
+        onmousedown="startSelect(event,'${d}','${slot}')"
+        onmouseenter="extendSelect(event,'${d}','${slot}')"
+        onmouseup="endSelect(event)">`;
+      if (log) {
+        const t = log.tasks;
+        const colour = t?.branches?.colour || '#58a6ff';
+        const bg = colourBg(colour, 0.35);
+        const branchName = t?.branches?.name || '';
+        html += `<div class="cal-entry" style="background:${bg};color:${colour};" title="${escHtml(t?.title||'')} ${slot}-${slotEnd(slot)}" onclick="event.stopPropagation()">
+          <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;gap:1px;">
+            <span class="cal-entry-name">${escHtml(t?.title || '')}</span>
+            ${branchName ? `<span style="font-size:8px;opacity:0.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHtml(branchName)}</span>` : ''}
+          </div>
+          <button class="cal-entry-del" onmousedown="event.stopPropagation()" onclick="event.stopPropagation();deleteSlot('${d}','${slot}')">×</button>
+        </div>`;
+      }
+      html += '</td>';
+    }
+    html += '</tr>';
+  }
+  html += '</tbody>';
+  table.innerHTML = html;
+}
+
+function renderMisc() {
+  const d = currentDate.toISOString().slice(0,10);
+  const items = miscByDate[d] || [];
+  const list = document.getElementById('misc-list');
+  if (!items.length) {
+    list.innerHTML = '<div style="padding:10px 14px;font-size:13px;color:var(--text-3);">No miscellaneous items today.</div>';
+    return;
+  }
+  list.innerHTML = items.map(m => `
+    <div class="misc-item">
+      <span class="misc-dot"></span>
+      <span>${escHtml(m.description)}</span>
+      <button class="misc-del" onclick="deleteMisc('${m.id}')">×</button>
+    </div>
+  `).join('');
+}
+
+function viewMisc(date, index) {
+  const items = miscByDate[date] || [];
+  const item = items[index];
+  if (!item) return;
+  document.getElementById('misc-view-date').textContent = new Date(date).toLocaleDateString('en-ZA', { weekday:'long', day:'numeric', month:'long' });
+  document.getElementById('misc-view-desc').textContent = item.description;
+  openModal('modal-misc-view');
+}
+
+// ── SELECTION ─────────────────────────────────────────────────
+function startSelect(e, date, slot) {
+  if (e.button !== 0) return;
+  selecting = true;
+  selectStart = { date, slot };
+  selectedSlots = [{ date, slot }];
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting'));
+  e.currentTarget.classList.add('selecting');
+}
+
+function extendSelect(e, date, slot) {
+  if (!selecting || date !== selectStart.date) return;
+  const slots = generateSlots(startHour, endHour);
+  const i1 = slots.indexOf(selectStart.slot);
+  const i2 = slots.indexOf(slot);
+  const [lo, hi] = i1 < i2 ? [i1, i2] : [i2, i1];
+  selectedSlots = slots.slice(lo, hi+1).map(s => ({ date, slot: s }));
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting'));
+  selectedSlots.forEach(s => {
+    const cell = document.querySelector(`.cal-cell[data-date="${s.date}"][data-slot="${s.slot}"]`);
+    if (cell) cell.classList.add('selecting');
+  });
+}
+
+function endSelect(e) {
+  if (!selecting) return;
+  selecting = false;
+  document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting'));
+  if (selectedSlots.length) openSlotModal();
+}
+
+document.addEventListener('mouseup', () => { if (selecting) { selecting = false; document.querySelectorAll('.cal-cell').forEach(c => c.classList.remove('selecting')); } });
+
+// ── SLOT MODAL ────────────────────────────────────────────────
+function openSlotModal() {
+  const container = document.getElementById('slot-task-select');
+  container.innerHTML = '';
+
+  const byBranch = {};
+  for (const t of tasks) {
+    const bn = t.branches?.name || 'Unassigned';
+    const bid = t.branch_id || '__none__';
+    if (!byBranch[bid]) byBranch[bid] = { name: bn, colour: t.branches?.colour || '#6e7681', tasks: [] };
+    byBranch[bid].tasks.push(t);
+  }
+
+  for (const [bid, group] of Object.entries(byBranch)) {
+    // Branch header (collapsed by default)
+    const header = document.createElement('div');
+    header.style.cssText = `display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;background:var(--surface-2);border-bottom:1px solid var(--border);user-select:none;`;
+    header.innerHTML = `
+      <span style="width:8px;height:8px;border-radius:50%;background:${group.colour};flex-shrink:0;display:inline-block;"></span>
+      <span style="font-size:12px;font-weight:600;color:var(--text);flex:1;">${escHtml(group.name)}</span>
+      <span class="branch-chevron" style="font-size:10px;color:var(--text-3);">▶</span>
+    `;
+
+    const taskList = document.createElement('div');
+    taskList.style.display = 'none';
+
+    for (const t of group.tasks) {
+      const row = document.createElement('div');
+      const isDone = t.status === 'completed';
+      row.style.cssText = `padding:7px 10px 7px 26px;cursor:pointer;font-size:13px;color:var(--text);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;`;
+      if (isDone) row.style.opacity = '0.5';
+      row.innerHTML = `
+        ${isDone ? '<span style="font-size:9px;color:var(--success);">✓</span>' : ''}
+        <span>${escHtml(t.title)}</span>
+      `;
+      row.onmouseenter = () => row.style.background = 'var(--surface-2)';
+      row.onmouseleave = () => row.style.background = '';
+      row.onclick = () => {
+        document.querySelectorAll('.task-option-selected').forEach(el => {
+          el.style.background = '';
+          el.classList.remove('task-option-selected');
+        });
+        row.style.background = 'var(--accent-dim)';
+        row.classList.add('task-option-selected');
+        container.dataset.selectedTask = t.id;
+      };
+      taskList.appendChild(row);
+    }
+
+    header.onclick = () => {
+      const isOpen = taskList.style.display !== 'none';
+      taskList.style.display = isOpen ? 'none' : 'block';
+      header.querySelector('.branch-chevron').textContent = isOpen ? '▶' : '▼';
+    };
+
+    container.appendChild(header);
+    container.appendChild(taskList);
+  }
+
+  const info = selectedSlots.length === 1
+    ? `${selectedSlots[0].date} · ${selectedSlots[0].slot} – ${slotEnd(selectedSlots[0].slot)}`
+    : `${selectedSlots[0].date} · ${selectedSlots[0].slot} – ${slotEnd(selectedSlots[selectedSlots.length-1].slot)} (${selectedSlots.length} slots · ${selectedSlots.length * 0.5}h)`;
+  document.getElementById('slot-info').textContent = info;
+  document.getElementById('slot-note').value = '';
+  openModal('modal-slot');
+}
+
+async function assignSlot() {
+  const container = document.getElementById('slot-task-select');
+  const task_id = container.dataset.selectedTask;
+  const note    = document.getElementById('slot-note').value.trim();
+  if (!task_id) { toast('Please select a task', 'error'); return; }
+  const slots = selectedSlots.map(s => ({ slot_start: s.slot, slot_end: slotEnd(s.slot) }));
+  const log_date = selectedSlots[0].date;
+  try {
+    await POST('time-logs', { task_id, log_date, slots, note: note || null });
+    closeModal('modal-slot');
+    await loadData();
+    renderGrid();
+    toast('Time logged', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteSlot(date, slot_start) {
+  try {
+    await DELETE('time-logs', { log_date: date, slot_start });
+    await loadData();
+    renderGrid();
+    toast('Removed', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── MISC ──────────────────────────────────────────────────────
+async function addMisc() {
+  const input = document.getElementById('misc-input');
+  const desc  = input.value.trim();
+  if (!desc) return;
+  const d = currentDate.toISOString().slice(0,10);
+  try {
+    const item = await POST('time-logs?type=misc', { log_date: d, description: desc });
+    if (!miscByDate[d]) miscByDate[d] = [];
+    miscByDate[d].push(item);
+    renderMisc();
+    input.value = '';
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deleteMisc(id) {
+  try {
+    await DELETE('time-logs?type=misc', { id });
+    const d = currentDate.toISOString().slice(0,10);
+    miscByDate[d] = (miscByDate[d] || []).filter(m => m.id !== id);
+    renderMisc();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+document.getElementById('misc-input').addEventListener('keydown', e => { if (e.key === 'Enter') addMisc(); });
+
+// ── NAV ───────────────────────────────────────────────────────
+function setView(v, btn) {
+  currentView = v;
+  document.querySelectorAll('.view-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('misc-section').style.display = v === 'day' ? 'block' : 'none';
+  loadData().then(render);
+}
+
+function navigate(dir) {
+  if (currentView === 'day')   currentDate.setDate(currentDate.getDate() + dir);
+  if (currentView === 'week')  currentDate.setDate(currentDate.getDate() + dir * 7);
+  if (currentView === 'month') currentDate.setMonth(currentDate.getMonth() + dir);
+  loadData().then(render);
+}
+
+function goToday() { currentDate = new Date(); loadData().then(render); }
+
+// ── HOUR RANGE SLIDER ────────────────────────────────────────
+let dragging = null;
+const SLIDER_MIN = 0, SLIDER_MAX = 24;
+
+function openHourSlider() {
+  sliderStart = startHour;
+  sliderEnd = endHour;
+  updateSliderUI();
+  openModal('modal-hours');
+}
+
+function updateSliderUI() {
+  const pctStart = (sliderStart / SLIDER_MAX) * 100;
+  const pctEnd   = (sliderEnd / SLIDER_MAX) * 100;
+  document.getElementById('handle-start').style.left = pctStart + '%';
+  document.getElementById('handle-end').style.left = pctEnd + '%';
+  document.getElementById('slider-range').style.left = pctStart + '%';
+  document.getElementById('slider-range').style.width = (pctEnd - pctStart) + '%';
+  document.getElementById('slider-start-label').textContent = String(sliderStart).padStart(2,'0') + ':00';
+  document.getElementById('slider-end-label').textContent = String(sliderEnd).padStart(2,'0') + ':00';
+}
+
+function startDrag(which, e) {
+  e.preventDefault();
+  dragging = which;
+  document.addEventListener('mousemove', onDragSlider);
+  document.addEventListener('mouseup', stopDrag);
+}
+
+function onDragSlider(e) {
+  if (!dragging) return;
+  const track = document.getElementById('slider-track');
+  const rect = track.getBoundingClientRect();
+  let pct = (e.clientX - rect.left) / rect.width;
+  pct = Math.max(0, Math.min(1, pct));
+  let hour = Math.round(pct * SLIDER_MAX);
+
+  if (dragging === 'start') {
+    sliderStart = Math.min(hour, sliderEnd - 1);
+    sliderStart = Math.max(0, sliderStart);
+  } else {
+    sliderEnd = Math.max(hour, sliderStart + 1);
+    sliderEnd = Math.min(24, sliderEnd);
+  }
+  updateSliderUI();
+}
+
+function stopDrag() {
+  dragging = null;
+  document.removeEventListener('mousemove', onDragSlider);
+  document.removeEventListener('mouseup', stopDrag);
+}
+
+function applyHourRange() {
+  startHour = sliderStart;
+  endHour = sliderEnd;
+  if (me) localStorage.setItem('cal_hours_' + me.id, JSON.stringify({ s: startHour, e: endHour }));
+  closeModal('modal-hours');
+  render();
+}
+
+function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+init();
+</script>
+</body>
+</html>

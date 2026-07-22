@@ -1,0 +1,24 @@
+{
+  "rewrites": [
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/calendar", "destination": "/calendar.html" },
+    { "source": "/tasks", "destination": "/tasks.html" },
+    { "source": "/scratchpad", "destination": "/scratchpad.html" },
+    { "source": "/reports", "destination": "/reports.html" },
+    { "source": "/admin", "destination": "/admin.html" },
+    { "source": "/timetable", "destination": "/timetable.html" },
+    { "source": "/uni", "destination": "/uni.html" },
+    { "source": "/finance", "destination": "/finance.html" },
+
+    { "source": "/api/branches", "destination": "/api/core?resource=branches" },
+    { "source": "/api/tasks", "destination": "/api/core?resource=tasks" },
+    { "source": "/api/time-logs", "destination": "/api/core?resource=time-logs" },
+    { "source": "/api/summary", "destination": "/api/core?resource=summary" },
+    { "source": "/api/notes", "destination": "/api/core?resource=notes" },
+
+    { "source": "/api/finance", "destination": "/api/extras?resource=finance" },
+    { "source": "/api/settings", "destination": "/api/extras?resource=settings" },
+    { "source": "/api/timetables", "destination": "/api/extras?resource=timetables" },
+    { "source": "/api/uni", "destination": "/api/extras?resource=uni" }
+  ]
+}
