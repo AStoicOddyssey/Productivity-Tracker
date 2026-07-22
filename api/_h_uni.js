@@ -115,5 +115,56 @@ export async function handler(req, res) {
     }
   }
 
+  // ── PERIODS (background ranges: recess, exams, etc.) ──────
+  if (type === 'periods') {
+    if (req.method === 'GET') {
+      const { data, error } = await supabase
+        .from('uni_periods')
+        .select('*')
+        .eq('user_id', user.user_id)
+        .order('start_date', { ascending: true });
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json(data);
+    }
+
+    if (req.method === 'POST') {
+      const { label, colour, start_date, end_date } = req.body;
+      if (!label || !start_date || !end_date) return res.status(400).json({ error: 'label, start_date and end_date required' });
+      const { data, error } = await supabase
+        .from('uni_periods')
+        .insert({ user_id: user.user_id, label, colour: colour || '#8957e5', start_date, end_date })
+        .select().single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(201).json(data);
+    }
+
+    if (req.method === 'PATCH') {
+      const { id, label, colour, start_date, end_date } = req.body;
+      if (!id) return res.status(400).json({ error: 'ID required' });
+      const updates = {};
+      if (label      !== undefined) updates.label      = label;
+      if (colour     !== undefined) updates.colour     = colour;
+      if (start_date !== undefined) updates.start_date = start_date;
+      if (end_date   !== undefined) updates.end_date   = end_date;
+      const { data, error } = await supabase
+        .from('uni_periods')
+        .update(updates)
+        .eq('id', id).eq('user_id', user.user_id)
+        .select().single();
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json(data);
+    }
+
+    if (req.method === 'DELETE') {
+      const { id } = req.body;
+      if (!id) return res.status(400).json({ error: 'ID required' });
+      const { error } = await supabase
+        .from('uni_periods')
+        .delete().eq('id', id).eq('user_id', user.user_id);
+      if (error) return res.status(500).json({ error: error.message });
+      return res.status(200).json({ ok: true });
+    }
+  }
+
   return res.status(405).end();
 }
