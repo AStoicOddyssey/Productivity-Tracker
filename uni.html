@@ -16,7 +16,8 @@
   .cal-nav-btn svg { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
   .cal-dow { padding: 8px 4px; text-align: center; font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
-  .cal-day { min-height: 90px; padding: 6px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; }
+  .cal-day { min-height: 90px; padding: 6px 6px 16px; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); cursor: pointer; transition: background 0.1s; position: relative; }
+  .period-label { position: absolute; bottom: 3px; right: 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; opacity: 0.8; pointer-events: none; }
   .cal-day:hover { background: var(--surface-2); }
   .cal-day.other-month { opacity: 0.35; }
   .cal-day.today .day-num { background: var(--accent); color: #0d1117; border-radius: 50%; }
@@ -60,6 +61,7 @@
         <div class="topbar-sub" id="topbar-sub"></div>
       </div>
       <div class="topbar-actions">
+        <button class="btn-ghost" onclick="openBackgroundModal()">Edit background</button>
         <button class="btn-ghost" onclick="openModal('modal-modules')">Modules</button>
       </div>
     </div>
@@ -190,6 +192,72 @@
   </div>
 </div>
 
+<!-- BACKGROUND PERIODS MODAL -->
+<div class="modal-backdrop" id="modal-background" style="display:none;">
+  <div class="modal" style="width:520px;">
+    <div class="modal-title">Background periods</div>
+    <div id="period-list-view"></div>
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);">
+      <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:12px;">Add period</div>
+      <div class="form-field">
+        <label class="form-label">Label *</label>
+        <input class="form-input" id="new-period-label" placeholder="e.g. Recess, Exams, Test Week" />
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div class="form-field">
+          <label class="form-label">Start date *</label>
+          <input class="form-input" type="date" id="new-period-start" />
+        </div>
+        <div class="form-field">
+          <label class="form-label">End date *</label>
+          <input class="form-input" type="date" id="new-period-end" />
+        </div>
+      </div>
+      <div class="form-field">
+        <label class="form-label">Colour</label>
+        <div class="colour-picker" id="new-period-colour-picker"></div>
+        <input type="hidden" id="new-period-colour" value="#8957e5" />
+      </div>
+      <button class="btn-primary" onclick="addPeriod()">Add period</button>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-ghost" onclick="closeModal('modal-background')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT PERIOD MODAL -->
+<div class="modal-backdrop" id="modal-edit-period" style="display:none;">
+  <div class="modal" style="width:440px;">
+    <div class="modal-title">Edit period</div>
+    <input type="hidden" id="edit-period-id" />
+    <div class="form-field">
+      <label class="form-label">Label *</label>
+      <input class="form-input" id="edit-period-label" />
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+      <div class="form-field">
+        <label class="form-label">Start date *</label>
+        <input class="form-input" type="date" id="edit-period-start" />
+      </div>
+      <div class="form-field">
+        <label class="form-label">End date *</label>
+        <input class="form-input" type="date" id="edit-period-end" />
+      </div>
+    </div>
+    <div class="form-field">
+      <label class="form-label">Colour</label>
+      <div class="colour-picker" id="edit-period-colour-picker"></div>
+      <input type="hidden" id="edit-period-colour" value="#8957e5" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn-danger" style="margin-right:auto;" onclick="deletePeriod()">Delete</button>
+      <button class="btn-ghost" onclick="closeModal('modal-edit-period')">Cancel</button>
+      <button class="btn-primary" onclick="savePeriod()">Save</button>
+    </div>
+  </div>
+</div>
+
 <!-- BRANCH MODAL (sidebar) -->
 <div class="modal-backdrop" id="modal-branch" style="display:none;">
   <div class="modal">
@@ -217,6 +285,7 @@ let me = null;
 let branches = [];
 let modules = [];
 let tasks = [];
+let periods = [];
 let currentDate = new Date();
 let editingTaskId = null;
 
@@ -233,6 +302,7 @@ async function init() {
   branches = await GET('branches').catch(() => []);
   buildSidebar('uni', me, branches);
   modules = await GET('uni', { type: 'modules' }).catch(() => []);
+  periods = await GET('uni', { type: 'periods' }).catch(() => []);
   await loadTasks();
   buildColourPickers();
   renderModuleList();
@@ -309,6 +379,13 @@ function dayCell(dt, otherMonth, todayStr, tasksByDate) {
   const div = document.createElement('div');
   div.className = 'cal-day' + (otherMonth ? ' other-month' : '') + (isToday ? ' today' : '');
 
+  // Period background (recess, exams, etc.)
+  const period = periods.find(p => dateStr >= p.start_date && dateStr <= p.end_date);
+  if (period) {
+    div.style.background = colourBg(period.colour, 0.13);
+    div.dataset.periodColour = period.colour;
+  }
+
   const num = document.createElement('div');
   num.className = 'day-num';
   num.textContent = dt.getDate();
@@ -325,6 +402,15 @@ function dayCell(dt, otherMonth, todayStr, tasksByDate) {
     pill.innerHTML = `<span class="status-icon">${statusIcon(t.status, colour)}</span><span style="flex:1;min-width:0;">${escHtml(t.description)}</span>`;
     pill.onclick = (e) => { e.stopPropagation(); openEditTask(t.id); };
     div.appendChild(pill);
+  }
+
+  // Period label bottom-right
+  if (period) {
+    const lbl = document.createElement('div');
+    lbl.className = 'period-label';
+    lbl.style.color = period.colour;
+    lbl.textContent = period.label;
+    div.appendChild(lbl);
   }
 
   div.onclick = () => openNewTask(dateStr);
@@ -456,6 +542,7 @@ async function deleteTask() {
 // ── MODULES ───────────────────────────────────────────────────
 function buildColourPickers() {
   buildPicker('new-module-colour-picker', 'new-module-colour', '#58a6ff');
+  buildPicker('new-period-colour-picker', 'new-period-colour', '#8957e5');
 }
 
 function buildPicker(pickerId, inputId, selected) {
@@ -542,6 +629,97 @@ async function deleteModule() {
     renderGrid();
     renderPanels();
     toast('Module deleted', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+// ── PERIODS (backgrounds) ─────────────────────────────────────
+function openBackgroundModal() {
+  buildPicker('new-period-colour-picker', 'new-period-colour', '#8957e5');
+  renderPeriodList();
+  openModal('modal-background');
+}
+
+function renderPeriodList() {
+  const container = document.getElementById('period-list-view');
+  if (!periods.length) {
+    container.innerHTML = '<div style="color:var(--text-3);font-size:13px;padding:8px 0;">No periods yet.</div>';
+    return;
+  }
+  container.innerHTML = '<div style="display:flex;flex-direction:column;gap:6px;">' + periods.map(p => {
+    const bg = colourBg(p.colour, 0.18);
+    const s = new Date(p.start_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+    const e = new Date(p.end_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
+    return `<div onclick="openEditPeriod('${p.id}')" style="display:flex;align-items:center;gap:10px;background:${bg};border:1px solid ${p.colour};border-radius:6px;padding:8px 12px;cursor:pointer;">
+      <span style="width:10px;height:10px;border-radius:50%;background:${p.colour};flex-shrink:0;"></span>
+      <span style="flex:1;font-size:13px;font-weight:600;color:var(--text);">${escHtml(p.label)}</span>
+      <span style="font-size:12px;color:var(--text-3);">${s} – ${e}</span>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+async function addPeriod() {
+  const label = document.getElementById('new-period-label').value.trim();
+  const start = document.getElementById('new-period-start').value;
+  const end   = document.getElementById('new-period-end').value;
+  const colour = document.getElementById('new-period-colour').value;
+  if (!label) { toast('Label required', 'error'); return; }
+  if (!start || !end) { toast('Start and end dates required', 'error'); return; }
+  if (end < start) { toast('End date must be on or after start date', 'error'); return; }
+  try {
+    const p = await POST('uni?type=periods', { label, colour, start_date: start, end_date: end });
+    periods.push(p);
+    periods.sort((a, b) => a.start_date.localeCompare(b.start_date));
+    document.getElementById('new-period-label').value = '';
+    document.getElementById('new-period-start').value = '';
+    document.getElementById('new-period-end').value = '';
+    renderPeriodList();
+    renderGrid();
+    toast('Period added', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+function openEditPeriod(id) {
+  const p = periods.find(p => p.id === id);
+  if (!p) return;
+  document.getElementById('edit-period-id').value = id;
+  document.getElementById('edit-period-label').value = p.label;
+  document.getElementById('edit-period-start').value = p.start_date;
+  document.getElementById('edit-period-end').value = p.end_date;
+  document.getElementById('edit-period-colour').value = p.colour;
+  buildPicker('edit-period-colour-picker', 'edit-period-colour', p.colour);
+  openModal('modal-edit-period');
+}
+
+async function savePeriod() {
+  const id     = document.getElementById('edit-period-id').value;
+  const label  = document.getElementById('edit-period-label').value.trim();
+  const start  = document.getElementById('edit-period-start').value;
+  const end    = document.getElementById('edit-period-end').value;
+  const colour = document.getElementById('edit-period-colour').value;
+  if (!label) { toast('Label required', 'error'); return; }
+  if (!start || !end) { toast('Start and end dates required', 'error'); return; }
+  if (end < start) { toast('End date must be on or after start date', 'error'); return; }
+  try {
+    const updated = await PATCH('uni?type=periods', { id, label, colour, start_date: start, end_date: end });
+    periods = periods.map(p => p.id === id ? updated : p);
+    periods.sort((a, b) => a.start_date.localeCompare(b.start_date));
+    closeModal('modal-edit-period');
+    renderPeriodList();
+    renderGrid();
+    toast('Period updated', 'success');
+  } catch(e) { toast(e.message, 'error'); }
+}
+
+async function deletePeriod() {
+  const id = document.getElementById('edit-period-id').value;
+  if (!confirm('Delete this period?')) return;
+  try {
+    await DELETE('uni?type=periods', { id });
+    periods = periods.filter(p => p.id !== id);
+    closeModal('modal-edit-period');
+    renderPeriodList();
+    renderGrid();
+    toast('Period deleted', 'success');
   } catch(e) { toast(e.message, 'error'); }
 }
 
