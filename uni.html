@@ -49,6 +49,36 @@
   .module-chip { display: flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 20px; font-size: 12px; font-weight: 500; cursor: pointer; transition: filter 0.1s; }
   .module-chip:hover { filter: brightness(1.2); }
   .empty-col { padding: 16px; text-align: center; color: var(--text-3); font-size: 12px; }
+
+  /* Visibility toggle */
+  .vis-tabs { display: flex; gap: 6px; }
+  .vis-tab {
+    flex: 1; padding: 7px 10px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text-3); font-family: var(--font); font-size: 11px; font-weight: 500;
+    cursor: pointer; transition: border-color .1s, color .1s, background .1s;
+  }
+  .vis-tab:hover { color: var(--text-2); border-color: var(--border-2); }
+  .vis-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+  /* Per-person status rows */
+  .person-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-bottom: 1px solid var(--border);
+  }
+  .person-row:last-child { border-bottom: none; }
+  .person-name { flex: 1; font-size: 13px; color: var(--text); }
+  .person-name.is-me { font-weight: 700; color: var(--accent); }
+  .person-btns { display: flex; gap: 4px; }
+  .person-btn {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface-2); cursor: pointer; padding: 0;
+    transition: border-color .1s, background .1s;
+  }
+  .person-btn:hover { border-color: var(--border-2); }
+  .person-btn.active { border-color: currentColor; background: var(--accent-dim); }
+  .person-btn svg { width: 13px; height: 13px; }
 </style>
 </head>
 <body>
@@ -131,12 +161,17 @@
       <input class="form-input" type="date" id="task-due" />
     </div>
     <div class="form-field">
-      <label class="form-label">Status</label>
-      <select class="form-select" id="task-status">
-        <option value="todo">To do</option>
-        <option value="in_progress">In progress</option>
-        <option value="completed">Completed</option>
-      </select>
+      <label class="form-label">Visibility</label>
+      <div class="vis-tabs">
+        <button type="button" class="vis-tab active" id="vis-global"   onclick="setVisibility('global')">Global — everyone sees it</button>
+        <button type="button" class="vis-tab"        id="vis-personal" onclick="setVisibility('personal')">Personal — only me</button>
+      </div>
+      <input type="hidden" id="task-visibility" value="global" />
+    </div>
+    <div class="form-field" id="people-status-field">
+      <label class="form-label">Progress</label>
+      <div id="people-status-rows"></div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:6px;">Saves as you click. Anyone can update anyone.</div>
     </div>
     <div class="modal-footer">
       <button class="btn-danger" id="task-del-btn" style="display:none;margin-right:auto;" onclick="deleteTask()">Delete</button>
@@ -289,6 +324,38 @@ let periods = [];
 let currentDate = new Date();
 let editingTaskId = null;
 
+// ── PEOPLE ────────────────────────────────────────────────────
+// Fill in each person's login email so the app knows which row is "you".
+// The key (left) is stored in the database — don't change keys once set.
+const PEOPLE = [
+  { key: 'eli',     name: 'Eli',     email: 'nepelser@gmail.com' },
+  { key: 'sharni',  name: 'Sharni',  email: '' },
+  { key: 'shweta',  name: 'Shweta',  email: '' },
+  { key: 'dhanvir', name: 'Dhanvir', email: '' },
+  { key: 'connor',  name: 'Connor',  email: '' }
+];
+
+let myKey = null;   // which person the logged-in account maps to
+
+function resolveMyKey() {
+  const email = (me?.email || '').trim().toLowerCase();
+  const match = PEOPLE.find(p => p.email && p.email.trim().toLowerCase() === email);
+  myKey = match ? match.key : null;
+}
+
+// Status for a given person on a task (defaults to 'todo')
+function statusFor(task, personKey) {
+  if (!personKey) return 'todo';
+  const rows = task.uni_task_status || [];
+  const row = rows.find(r => r.person_key === personKey);
+  return row ? row.status : 'todo';
+}
+
+// The status shown on pills and in the Active/Completed columns = mine
+function myStatus(task) {
+  return statusFor(task, myKey);
+}
+
 // STATUS ICONS
 function statusIcon(status, colour) {
   if (status === 'completed') return `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="${colour}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
@@ -299,6 +366,7 @@ function statusIcon(status, colour) {
 async function init() {
   me = await requireLogin();
   if (!me) return;
+  resolveMyKey();
   branches = await GET('branches').catch(() => []);
   buildSidebar('uni', me, branches);
   modules = await GET('uni', { type: 'modules' }).catch(() => []);
@@ -399,7 +467,7 @@ function dayCell(dt, otherMonth, todayStr, tasksByDate) {
     const pill = document.createElement('div');
     pill.className = 'task-pill';
     pill.style.cssText = `background:${bg};color:${colour};`;
-    pill.innerHTML = `<span class="status-icon">${statusIcon(t.status, colour)}</span><span style="flex:1;min-width:0;">${escHtml(t.description)}</span>`;
+    pill.innerHTML = `<span class="status-icon">${statusIcon(myStatus(t), colour)}</span><span style="flex:1;min-width:0;">${escHtml(t.description)}</span>`;
     pill.onclick = (e) => { e.stopPropagation(); openEditTask(t.id); };
     div.appendChild(pill);
   }
@@ -433,7 +501,7 @@ function renderPanels() {
       const bg = colourBg(colour, 0.15);
       const dateStr = new Date(t.due_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
       return `<div class="stack-item" onclick="openEditTask('${t.id}')">
-        <div style="width:10px;height:10px;margin-top:3px;flex-shrink:0;">${statusIcon(t.status, colour)}</div>
+        <div style="width:10px;height:10px;margin-top:3px;flex-shrink:0;">${statusIcon(myStatus(t), colour)}</div>
         <div class="stack-item-body">
           <div class="stack-item-desc">${escHtml(t.description)}</div>
           <div class="stack-item-meta">${mod ? escHtml(mod.name) + ' · ' : ''}${dateStr}</div>
@@ -443,12 +511,12 @@ function renderPanels() {
   }
 
   // Active column (todo + in_progress)
-  const active = sorted.filter(t => t.status !== 'completed');
+  const active = sorted.filter(t => myStatus(t) !== 'completed');
   const colActive = document.getElementById('col-active');
   colActive.innerHTML = active.length ? active.map(t => statusCard(t)).join('') : '<div class="empty-col">None</div>';
 
   // Completed column
-  const completed = sorted.filter(t => t.status === 'completed');
+  const completed = sorted.filter(t => myStatus(t) === 'completed');
   const colCompleted = document.getElementById('col-completed');
   colCompleted.innerHTML = completed.length ? completed.map(t => statusCard(t)).join('') : '<div class="empty-col">None</div>';
 }
@@ -457,10 +525,10 @@ function statusCard(t) {
   const mod = t.uni_modules;
   const colour = mod?.colour || '#6e7681';
   const dateStr = new Date(t.due_date).toLocaleDateString('en-ZA', { day: 'numeric', month: 'short' });
-  const statusLabel = { todo: 'To do', in_progress: 'In progress', completed: 'Completed' }[t.status];
+  const statusLabel = { todo: 'To do', in_progress: 'In progress', completed: 'Completed' }[myStatus(t)];
   return `<div class="status-card" onclick="openEditTask('${t.id}')">
     <div class="status-card-title" style="display:flex;align-items:center;gap:6px;">
-      ${statusIcon(t.status, colour)}
+      ${statusIcon(myStatus(t), colour)}
       ${escHtml(t.description)}
     </div>
     <div class="status-card-meta">${mod ? escHtml(mod.name) + ' · ' : ''}${dateStr}</div>
@@ -477,6 +545,62 @@ function populateModuleSelect() {
   });
 }
 
+function setVisibility(v) {
+  document.getElementById('task-visibility').value = v;
+  document.getElementById('vis-global').classList.toggle('active', v === 'global');
+  document.getElementById('vis-personal').classList.toggle('active', v === 'personal');
+}
+
+// Renders the five per-person status rows. Clicking saves immediately.
+function renderPeopleStatus(task) {
+  const container = document.getElementById('people-status-rows');
+  const field = document.getElementById('people-status-field');
+
+  // Only meaningful once the task exists
+  if (!task) { field.style.display = 'none'; container.innerHTML = ''; return; }
+  field.style.display = 'block';
+
+  const OPTS = [
+    { key: 'todo',        label: 'To do',       colour: '#8b949e' },
+    { key: 'in_progress', label: 'In progress', colour: '#d29922' },
+    { key: 'completed',   label: 'Completed',   colour: '#3fb950' }
+  ];
+
+  container.innerHTML = PEOPLE.map(p => {
+    const cur = statusFor(task, p.key);
+    const btns = OPTS.map(o => `
+      <button type="button"
+        class="person-btn ${cur === o.key ? 'active' : ''}"
+        style="color:${cur === o.key ? o.colour : 'var(--text-3)'};"
+        title="${o.label}"
+        onclick="setPersonStatus('${task.id}','${p.key}','${o.key}')">
+        ${statusIcon(o.key, 'currentColor')}
+      </button>`).join('');
+    return `<div class="person-row">
+      <span class="person-name ${p.key === myKey ? 'is-me' : ''}">${escHtml(p.name)}${p.key === myKey ? ' (you)' : ''}</span>
+      <div class="person-btns">${btns}</div>
+    </div>`;
+  }).join('');
+}
+
+async function setPersonStatus(taskId, personKey, status) {
+  try {
+    await POST('uni?type=status', { task_id: taskId, person_key: personKey, status });
+
+    // Update local copy so the UI reflects it without a reload
+    const t = tasks.find(t => t.id === taskId);
+    if (t) {
+      if (!Array.isArray(t.uni_task_status)) t.uni_task_status = [];
+      const row = t.uni_task_status.find(r => r.person_key === personKey);
+      if (row) row.status = status;
+      else t.uni_task_status.push({ person_key: personKey, status });
+      renderPeopleStatus(t);
+    }
+    renderGrid();
+    renderPanels();
+  } catch(e) { toast(e.message, 'error'); }
+}
+
 function openNewTask(dateStr) {
   editingTaskId = null;
   populateModuleSelect();
@@ -485,7 +609,8 @@ function openNewTask(dateStr) {
   document.getElementById('task-module').value = '';
   document.getElementById('task-desc').value = '';
   document.getElementById('task-due').value = dateStr;
-  document.getElementById('task-status').value = 'todo';
+  setVisibility('global');
+  renderPeopleStatus(null);
   document.getElementById('task-del-btn').style.display = 'none';
   openModal('modal-task');
 }
@@ -500,24 +625,25 @@ function openEditTask(id) {
   document.getElementById('task-module').value = t.module_id || '';
   document.getElementById('task-desc').value = t.description;
   document.getElementById('task-due').value = t.due_date;
-  document.getElementById('task-status').value = t.status;
+  setVisibility(t.visibility === 'personal' ? 'personal' : 'global');
+  renderPeopleStatus(t);
   document.getElementById('task-del-btn').style.display = 'inline-flex';
   openModal('modal-task');
 }
 
 async function saveTask() {
-  const desc    = document.getElementById('task-desc').value.trim();
-  const due     = document.getElementById('task-due').value;
-  const modId   = document.getElementById('task-module').value;
-  const status  = document.getElementById('task-status').value;
+  const desc  = document.getElementById('task-desc').value.trim();
+  const due   = document.getElementById('task-due').value;
+  const modId = document.getElementById('task-module').value;
+  const vis   = document.getElementById('task-visibility').value;
   if (!desc) { toast('Description required', 'error'); return; }
   if (!due)  { toast('Due date required', 'error'); return; }
   try {
     if (editingTaskId) {
-      const updated = await PATCH('uni?type=tasks', { id: editingTaskId, description: desc, due_date: due, module_id: modId || null, status });
+      const updated = await PATCH('uni?type=tasks', { id: editingTaskId, description: desc, due_date: due, module_id: modId || null, visibility: vis });
       tasks = tasks.map(t => t.id === editingTaskId ? updated : t);
     } else {
-      const created = await POST('uni?type=tasks', { description: desc, due_date: due, module_id: modId || null, status });
+      const created = await POST('uni?type=tasks', { description: desc, due_date: due, module_id: modId || null, visibility: vis });
       tasks.push(created);
     }
     closeModal('modal-task');

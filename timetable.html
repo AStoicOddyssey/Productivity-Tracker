@@ -78,6 +78,16 @@
   .pdf-mode-toggle { display: flex; gap: 12px; margin-bottom: 16px; }
   .pdf-mode-opt { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; }
 
+  .vis-tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .vis-tab {
+    flex: 1; padding: 7px 10px; border-radius: var(--radius);
+    border: 1px solid var(--border); background: var(--surface-2);
+    color: var(--text-3); font-family: var(--font); font-size: 11px; font-weight: 500;
+    cursor: pointer; transition: border-color .1s, color .1s, background .1s;
+  }
+  .vis-tab:hover { color: var(--text-2); border-color: var(--border-2); }
+  .vis-tab.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
   .empty-tt { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 300px; color: var(--text-3); font-size: 13px; gap: 12px; }
 </style>
 </head>
@@ -154,6 +164,15 @@
           <input class="form-input" id="item-instructor" placeholder="optional" />
         </div>
       </div>
+    </div>
+
+    <div class="form-field">
+      <label class="form-label">Visibility</label>
+      <div class="vis-tabs">
+        <button type="button" class="vis-tab active" id="tt-vis-global"   onclick="setItemVisibility('global')">Global — everyone sees it</button>
+        <button type="button" class="vis-tab"        id="tt-vis-personal" onclick="setItemVisibility('personal')">Personal — only me</button>
+      </div>
+      <input type="hidden" id="item-visibility" value="global" />
     </div>
 
     <div id="meeting-times-container"></div>
@@ -446,6 +465,12 @@ function rgbToHex(rgb) {
 }
 
 // ── ITEM TYPE ─────────────────────────────────────────────────
+function setItemVisibility(v) {
+  document.getElementById('item-visibility').value = v;
+  document.getElementById('tt-vis-global').classList.toggle('active', v === 'global');
+  document.getElementById('tt-vis-personal').classList.toggle('active', v === 'personal');
+}
+
 function setItemType(type) {
   currentItemType = type;
   document.getElementById('tab-course').classList.toggle('active', type === 'course');
@@ -526,6 +551,7 @@ function openAddModal() {
   document.getElementById('item-instructor').value = '';
   document.getElementById('meeting-times-container').innerHTML = '';
   setItemType('course');
+  setItemVisibility('global');
   setColour('#58a6ff');
   addMeetingCard();
   openModal('modal-add');
@@ -545,6 +571,7 @@ function openEditItem(id) {
   document.getElementById('item-instructor').value = item.instructor || '';
   document.getElementById('meeting-times-container').innerHTML = '';
   setItemType(item.item_type || 'course');
+  setItemVisibility(item.visibility === 'personal' ? 'personal' : 'global');
   setColour(item.colour || '#58a6ff');
 
   const slots = item.timetable_slots || [];
@@ -575,6 +602,7 @@ async function saveItem() {
 
   const body = {
     item_type:   currentItemType,
+    visibility:  document.getElementById('item-visibility').value,
     title,
     colour,
     course_type: courseType || null,
