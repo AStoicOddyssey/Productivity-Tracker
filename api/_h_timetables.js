@@ -13,7 +13,6 @@ export async function handler(req, res) {
       const { data, error } = await supabase
         .from('timetables')
         .select('*')
-        .eq('user_id', user.user_id)
         .order('created_at', { ascending: true });
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json(data);
@@ -36,7 +35,6 @@ export async function handler(req, res) {
         .from('timetables')
         .update({ title })
         .eq('id', id)
-        .eq('user_id', user.user_id)
         .select().single();
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json(data);
@@ -48,8 +46,7 @@ export async function handler(req, res) {
       const { error } = await supabase
         .from('timetables')
         .delete()
-        .eq('id', id)
-        .eq('user_id', user.user_id);
+        .eq('id', id);
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true });
     }
@@ -65,7 +62,7 @@ export async function handler(req, res) {
         .from('timetable_items')
         .select('*, timetable_slots(*)')
         .eq('timetable_id', timetable_id)
-        .eq('user_id', user.user_id)
+        .or('visibility.eq.global,user_id.eq.' + user.user_id)
         .order('created_at', { ascending: true });
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json(data);
@@ -73,13 +70,14 @@ export async function handler(req, res) {
 
     // POST — create item + slots in one call
     if (req.method === 'POST') {
-      const { timetable_id, item_type, title, colour, course_type, instructor, location, slots } = req.body;
+      const { timetable_id, item_type, title, colour, course_type, instructor, location, slots, visibility } = req.body;
       if (!timetable_id || !title) return res.status(400).json({ error: 'timetable_id and title required' });
 
       const { data: item, error: itemErr } = await supabase
         .from('timetable_items')
         .insert({
           timetable_id, user_id: user.user_id,
+          visibility: visibility === 'personal' ? 'personal' : 'global',
           item_type: item_type || 'course',
           title, colour: colour || '#58a6ff',
           course_type: course_type || null,
@@ -113,7 +111,7 @@ export async function handler(req, res) {
 
     // PATCH — update item + replace slots
     if (req.method === 'PATCH') {
-      const { id, item_type, title, colour, course_type, instructor, location, slots } = req.body;
+      const { id, item_type, title, colour, course_type, instructor, location, slots, visibility } = req.body;
       if (!id) return res.status(400).json({ error: 'ID required' });
 
       const updates = {};
@@ -123,12 +121,12 @@ export async function handler(req, res) {
       if (instructor  !== undefined) updates.instructor  = instructor;
       if (location    !== undefined) updates.location    = location;
       if (item_type   !== undefined) updates.item_type   = item_type;
+      if (visibility  !== undefined) updates.visibility  = visibility === 'personal' ? 'personal' : 'global';
 
       const { error: itemErr } = await supabase
         .from('timetable_items')
         .update(updates)
-        .eq('id', id)
-        .eq('user_id', user.user_id);
+        .eq('id', id);
       if (itemErr) return res.status(500).json({ error: itemErr.message });
 
       // Replace slots
@@ -163,8 +161,7 @@ export async function handler(req, res) {
       const { error } = await supabase
         .from('timetable_items')
         .delete()
-        .eq('id', id)
-        .eq('user_id', user.user_id);
+        .eq('id', id);
       if (error) return res.status(500).json({ error: error.message });
       return res.status(200).json({ ok: true });
     }
