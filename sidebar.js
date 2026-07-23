@@ -1,6 +1,11 @@
 // sidebar.js — call buildSidebar(activePage, me, branches) to inject nav
 
+// Only this account sees the "Eli Work" section (cosmetic gate)
+const OWNER_EMAIL = 'nepelser@gmail.com';
+
 function buildSidebar(activePage, me, branches = []) {
+  const isOwner = (me.email || '').trim().toLowerCase() === OWNER_EMAIL;
+
   const initials = (me.full_name || me.email || 'U')
     .split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
 
@@ -26,19 +31,8 @@ function buildSidebar(activePage, me, branches = []) {
     </a>
   ` : '';
 
-  const html = `
-    <div class="sidebar-logo">
-      <div class="logo-icon">
-        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
-      </div>
-      <div>
-        <div class="logo-text">Productivity</div>
-        <div class="logo-sub">Tracker</div>
-      </div>
-    </div>
-
-    <nav class="nav">
-      <!-- ELI WORK FOLDER -->
+  // "Eli Work" section — only rendered for the owner account
+  const workFolder = !isOwner ? '' : `
       <button class="nav-folder-header" onclick="toggleFolder('folder-work')">
         <svg class="folder-chevron" id="chev-folder-work" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
         <span>Eli Work</span>
@@ -76,6 +70,21 @@ function buildSidebar(activePage, me, branches = []) {
           New branch
         </button>
       </div>
+  `;
+
+  const html = `
+    <div class="sidebar-logo">
+      <div class="logo-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+      </div>
+      <div>
+        <div class="logo-text">Productivity</div>
+        <div class="logo-sub">Tracker</div>
+      </div>
+    </div>
+
+    <nav class="nav">
+      ${workFolder}
 
       <!-- UNI FOLDER -->
       <button class="nav-folder-header" onclick="toggleFolder('folder-uni')">
@@ -166,16 +175,24 @@ function buildSidebar(activePage, me, branches = []) {
   const sidebar = document.getElementById('sidebar');
   if (sidebar) sidebar.innerHTML = html;
 
-  // Auto-expand the folder containing the active page
-  const uniPages = ['uni', 'timetable'];
-  const activeFolder = uniPages.includes(activePage) ? 'folder-uni' : 'folder-work';
-  // Only auto-open if we're actually on one of the nav pages (not e.g. admin)
+  // Auto-expand the relevant folder
+  const uniPages  = ['uni', 'timetable'];
   const workPages = ['dashboard', 'calendar', 'tasks', 'scratchpad', 'reports', 'finance'];
-  if (uniPages.includes(activePage) || workPages.includes(activePage) || (activePage || '').startsWith('branch-')) {
-    const folderToOpen = uniPages.includes(activePage) ? 'folder-uni' : 'folder-work';
-    const el = document.getElementById(folderToOpen);
+
+  let folderToOpen = null;
+  if (!isOwner) {
+    // Friends only have the Uni section — always show it open
+    folderToOpen = 'folder-uni';
+  } else if (uniPages.includes(activePage)) {
+    folderToOpen = 'folder-uni';
+  } else if (workPages.includes(activePage) || (activePage || '').startsWith('branch-')) {
+    folderToOpen = 'folder-work';
+  }
+
+  if (folderToOpen) {
+    const el   = document.getElementById(folderToOpen);
     const chev = document.getElementById('chev-' + folderToOpen);
-    if (el) el.style.display = 'block';
+    if (el)   el.style.display = 'block';
     if (chev) chev.style.transform = 'rotate(90deg)';
   }
 

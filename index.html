@@ -85,9 +85,14 @@
 <p class="footer-note">Access is restricted. <a href="mailto:admin@gsa.com">Request access</a></p>
 
 <script>
+  const OWNER_EMAIL = 'nepelser@gmail.com';
+  const landingFor = (email) =>
+    (email || '').trim().toLowerCase() === OWNER_EMAIL ? '/dashboard' : '/uni';
+
   // Redirect if already logged in
   fetch('/api/auth?action=me', { credentials: 'same-origin' })
-    .then(r => { if (r.ok) window.location.href = '/dashboard'; })
+    .then(r => r.ok ? r.json() : null)
+    .then(me => { if (me) window.location.href = landingFor(me.email); })
     .catch(() => {});
 
   async function login() {
@@ -116,7 +121,7 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Login failed');
 
-      window.location.href = '/dashboard';
+      window.location.href = landingFor(email);
     } catch (err) {
       showError(err.message);
       btn.disabled = false;
